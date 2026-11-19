@@ -2,7 +2,7 @@
 // from snapshots. Turns input into actions, events into sounds/effects/HUD, and builds the renderer's view.
 import { Sim, B, ST, LS, PH, swingPower, aimDir } from '../shared/sim.js';
 import { botThink } from '../shared/bots.js';
-import { LOOT, LOOT_IDS, ITEMS, DREAMS, GAME, PHYS, clockLabel, BOT_NAMES, MOD_DEFAULTS, REGIONS, SEAT_COLORS } from '../shared/data.js';
+import { LOOT, LOOT_IDS, ITEMS, DREAMS, GAME, PHYS, clockLabel, BOT_NAMES, MOD_DEFAULTS, REGIONS, SEAT_COLORS, MAPS, MAP_IDS } from '../shared/data.js';
 import { SEATS, STASH_R, SPOTS } from '../shared/world.js';
 import { input, glyph } from './input.js';
 import * as audio from './audio.js';
@@ -46,6 +46,9 @@ export class Game {
     this.lastClock = '';
     this.voiceIds = {};
     this.sim = new Sim({ seed: (Math.random() * 1e9) | 0, mods: mods || {}, dreamPool, roster: [] });
+    // testing: ?map=beach (or camp, hammock, bedroom) keeps a game you host on one map every night
+    const forceMap = new URLSearchParams(location.search).get('map');
+    if (forceMap && MAPS[forceMap]) { this.sim.forceMap = forceMap; this.sim.mapOrder = this.sim.mapOrder.map(() => forceMap); }
     this.sim.botInput = botThink;
     if (this.isHost) {
       const p = this.sim.addPlayer({ seat: 0, pid: me.pid, name: me.name, cos: me.cos, color: me.color });
@@ -70,6 +73,7 @@ export class Game {
   }
   destroy() {
     this.alive = false;
+    if (audio.setAmbience) audio.setAmbience(null);
     if (this.stopTicker) this.stopTicker();
     input.inGame = false; input.unlock();
     try { this.net && this.net.close(); } catch { }
@@ -241,6 +245,9 @@ export class Game {
     // the world
     const sim = this.sim, W = sim.world;
     sim.phase = s.ph; sim.phaseT = s.pt; sim.night = s.n; sim.dream = s.d; sim.water = s.wa;
+    const map = MAP_IDS[s.mp] || 'bedroom';
+    if (sim.map !== map) { sim.map = map; W.setMap(map); }
+    sim.swayAng = (s.sw || 0) / 1000;
     const [br, mo, mor, lL, lR, pa, pb, gph] = s.w;
     if (W.A.name !== pa) W.A = W.pose(pa);
     if (W.B.name !== pb) W.B = W.pose(pb);
@@ -417,6 +424,8 @@ export class Game {
     return { mx, mz, yaw: camYaw, pitch, b, p, sl: this.selSlot, v: 0, em };
   }
   guestTick(inp, dt) {
+    const nx = this.info && this.info.nx, ph = this.sim.phase;
+    if (nx && MAPS[nx] && (ph === PH.LOBBY || ph === PH.DAWN || ph === PH.RESULTS || ph === PH.SHOP)) this.sim.world.warm(nx);
     // fixed 60 Hz steps, each with its own sequence number (the host plays them back one per step)
     this.gacc = (this.gacc || 0) + dt;
     let presses = inp.p;
@@ -449,7 +458,7 @@ export class Game {
   baseView() {
     const sim = this.sim;
     return {
-      world: sim.world, dream: sim.dream, water: sim.water, phase: sim.phase,
+      world: sim.world, map: sim.map, sway: sim.swayAng || 0, dream: sim.dream, water: sim.water, phase: sim.phase,
       mode: sim.g.mode, eyes: sim.g.eyes || 0, look: sim.g.look, wind: sim.windAt ? Math.min(1, Math.abs(sim.windAt.f) / 6) : 0,
     };
   }
@@ -638,6 +647,7 @@ export class Game {
       }
       case 'stealing': if (sim.stashes[e.from] && this.isMyStash(e.from) && (this.lastStealWarn || 0) < performance.now() - 2500) { this.lastStealWarn = performance.now(); this.hud.flash(`⚠️ ${pl(e.seat)?.name || 'Someone'} is robbing your stash!`, 'bad'); audio.sfx('stash_alarm'); } break;
       case 'night': {
+        if (audio.setAmbience) audio.setAmbience(e.map || 'bedroom');
         this.ui.closeOverlays();
         this.hud.nightIntro(e);
         audio.sfx('night_start');
@@ -649,14 +659,15 @@ export class Game {
       case 'results': this.ui.showResults(e); audio.startMusic('results'); break;
       case 'shop': this.ui.showShop(); audio.startMusic('shop'); break;
       case 'final': this.ui.showFinal(e); audio.startMusic('results'); break;
-      case 'lobby': this.ui.closeOverlays(); this.ui.showLobby(); audio.startMusic('menu'); break;
+      case 'lobby': if (audio.setAmbience) audio.setAmbience(null); this.ui.closeOverlays(); this.ui.showLobby(); audio.startMusic('menu'); break;
       case 'warn': if (e.target === this.seat) { this.hud.flash('✋ THE HAND IS COMING FOR YOU! RUN!', 'bad'); input.rumble(0.7, 300); } break;
       case 'caught': if (mine(e.seat)) this.hud.flash('😱 HE SAW YOU MOVE!', 'bad'); break;
       case 'waker': if (mine(e.seat)) this.hud.flash(`⏰ You woke him up! Fined $${e.fine}`, 'bad'); break;
       case 'sneeze': { const n = SPOTS.noseTip, s = e.s || 1; R.emit(n.x, n.y, n.z + 3, Math.round(160 * s), { colors: [0xffffff, 0xcfe6ff, 0xfff4b0, 0xffc2e6], speed: 26 * Math.sqrt(s), up: 4, grav: 2, drag: 1.2, life: 1.6, size: 0.5 }); break; }
       case 'boop': { const n = SPOTS.noseTip; R.emit(n.x, n.y + 1, n.z, 24, { colors: [0xffc2e6, 0xffffff, 0xfff4b0], speed: 4, up: 3, grav: 2, life: 1, size: 0.4 }); R.popup(n.x, n.y + 3, n.z, 'boop!', '#ffc2e6', true); if (mine(e.seat)) input.rumble(0.3, 120); break; }
       case 'roll': R.shake(0.9); break;
-      case 'out': if (mine(e.seat)) this.hud.flash('💫 You fell off the bed!', 'bad'); break;
+      case 'out': if (mine(e.seat)) this.hud.flash(`💫 You ${(MAPS[sim.map] || MAPS.bedroom).fell}!`, 'bad'); break;
+      case 'splash': R.emit(e.x, (sim.water || 0) + 0.3, e.z, 40, { colors: [0xffffff, 0xbfe8ff, 0x7fc8ff], speed: 7, up: 6, grav: 14, life: 1, size: 0.45 }); break;
       case 'swing': { const g = R.goblins.get(e.seat); if (g) g.play('swing'); break; }
       case 'slap': { const g = R.goblins.get(e.seat); if (g) g.play('slap'); break; }
       case 'grabbed': if (mine(e.seat)) { this.hud.flash(`🙌 Grabbed! Mash ${glyph('jump')} to wiggle free!`, 'bad'); input.rumble(0.5, 200); } break;

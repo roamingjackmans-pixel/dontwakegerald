@@ -203,16 +203,19 @@ function pickGoal(sim, p, sk, carried, myStash) {
 const onStand = (x, z) => Math.abs(x) > 51.3 && Math.abs(x) < 73.5 && z > -80 && z < -56;
 /** don't run off the edge of the bed (but hop over to the nightstands on purpose) */
 function steerSafe(sim, p, inp, tx, tz) {
-  const ahead = 2.2;
+  // look further ahead the faster we go (sprinting bots used to run straight off open ends)
+  const ahead = 2.2 + Math.hypot(p.vx, p.vz) * 0.3;
   if (tx !== undefined) {
     const goingOut = onStand(tx, tz) && !onStand(p.x, p.z), goingIn = onStand(p.x, p.z) && !onStand(tx, tz);
-    if (goingOut && Math.abs(p.x) > 47.8 && p.grounded && Math.sign(inp.mx) === Math.sign(p.x)) { inp.p |= B.JUMP; inp.b |= B.SPRINT; return; }
+    // near the edge but not level with the table yet: walk along the edge until we are, then hop straight across
+    if (goingOut && Math.abs(p.x) > 44 && (p.z > -59 || p.z < -77)) { inp.mx = -Math.sign(p.x) * 0.25; inp.mz = p.z > -59 ? -1 : 1; const l = Math.hypot(inp.mx, inp.mz); inp.mx /= l; inp.mz /= l; return; }
+    if (goingOut && Math.abs(p.x) > 47.8 && p.grounded) { inp.mx = Math.sign(p.x); inp.mz = 0; inp.p |= B.JUMP; inp.b |= B.SPRINT; return; }
     if (goingOut && Math.abs(p.x) > 46) return;
     if (goingIn && Math.abs(p.x) < 53.5 && p.grounded) { inp.p |= B.JUMP; return; }
     if (goingIn || onStand(p.x, p.z)) return;
   }
   const ax = p.x + inp.mx * ahead, az = p.z + inp.mz * ahead;
-  if (!sim.world.onBed(ax, az) || sim.world.heightAt(ax, az) < -2) {
+  if (sim.unsafe(ax, az)) {
     if (sim.world.onBed(p.x, p.z) && !(p.y > 7 && Math.abs(p.x) > 50)) {
       // turn toward the middle of the bed
       const cx = -p.x, cz = -p.z * 0.3, d = hyp(cx, cz) || 1;

@@ -4,8 +4,11 @@
 import { World, SEATS, STASH_R, SPOTS, POSE_IDS, BED, NIGHTSTAND_TOP, FLOOR_Y } from './world.js';
 import {
   PHYS, NOISE, REGIONS, REGION, LOOT, LOOT_IDS, LOOT_INDEX, carryMul, ITEMS, ITEM_IDS, INV_SLOTS, DREAMS, DREAM_IDS,
-  MOD_DEFAULTS, SLEEP_TALK, WAKE_LINES, SETTLE_LINES, BOT_SKILL, AWARDS, SEAT_COLORS, TEAM_COLORS,
+  MOD_DEFAULTS, SLEEP_TALK, WAKE_LINES, SETTLE_LINES, BOT_SKILL, AWARDS, SEAT_COLORS, TEAM_COLORS, MAPS, MAP_IDS, CRITTERS,
 } from './data.js';
+
+// the beach tide rises from TIDE0 to TIDE1 over the night; the hammock's sideways push per radian of tilt
+const TIDE0 = -3, TIDE1 = 0.8, SWAY_ACC = 70;
 
 export const B = { JUMP: 1, SPRINT: 2, GRAB: 4, SWING: 8, SLAP: 16, DIVE: 32, USE: 64, INTERACT: 128, EMOTE: 256 };
 export const ST = { OK: 0, RAG: 1, HELD: 2, FLAT: 3, OUT: 4, SPEC: 5, ZIP: 6 };
@@ -55,6 +58,9 @@ export class Sim {
     this.events = [];
     this.noiseLog = [];
     this.water = -5;
+    this.map = 'bedroom';          // where Gerald is asleep tonight
+    this.mapOrder = this.makeMapOrder();
+    this.swayAng = 0; this.swayKick = 0; this.swayT = 0;
     this.final = null;
     this.awardsTonight = null;
     this.g = this._newGerald();
@@ -137,7 +143,8 @@ export class Sim {
   // ---------------------------------------------------------------- phases
   enterLobby() {
     this.phase = PH.LOBBY; this.phaseT = 0; this.night = 0; this.dream = 'none'; this.dreamsUsed = [];
-    this.world.setPose('back'); this.g = this._newGerald(); this.water = -5; this.cat = null;
+    this.map = 'bedroom'; this.mapOrder = this.forceMap ? this.mapOrder : this.makeMapOrder(); this.swayAng = this.swayKick = 0;
+    this.world.setMap('bedroom'); this.world.setPose('back'); this.g = this._newGerald(); this.water = -5; this.cat = null;
     this.clearLoot(); this.props = [];
     for (const s of this.stashes) s.items = [];
     for (const p of this.list) { p.cash = this.mods.startCash; p.tonight = 0; p.stats = newStats(); p.totals = newStats(); p.inv = [null, null, null]; p.fx = {}; this.spawnAtStash(p); }
@@ -154,13 +161,33 @@ export class Sim {
     this.beginNight();
   }
   get lastNight() { return this.night >= this.mods.nights; }
+  /** a new place every night: every map once before any repeats, never the same one twice in a row */
+  makeMapOrder(n = 8) {
+    const out = [];
+    while (out.length < n) {
+      const bag = MAP_IDS.slice().sort(() => Math.random() - 0.5);
+      if (out.length && bag[0] === out[out.length - 1]) bag.push(bag.shift());
+      out.push(...bag);
+    }
+    return out.slice(0, n);
+  }
+  get mapDef() { return MAPS[this.map] || MAPS.bedroom; }
+  /** where tomorrow night happens (or the first night, from the lobby) */
+  get nextMap() { return this.mapOrder[this.night % this.mapOrder.length]; }
+  get swayAcc() { return this.map === 'hammock' ? this.swayAng * SWAY_ACC : 0; }
+  kickSway(a) { if (this.map === 'hammock') this.swayKick = Math.min(0.2, this.swayKick + a); }
+  /** washed out to sea? (the beach: under the water where it's deep) */
+  tideOut(x, y, z) { return this.map === 'beach' && y < this.water + 0.3 && this.world.heightAt(x, z) < this.water - 1.6; }
+  /** places bots should keep away from */
+  unsafe(x, z) { const W = this.world; if (!W.onBed(x, z)) return true; const h = W.heightAt(x, z); return h < -2 || (this.map === 'beach' && h < this.water - 1); }
   get nm() { return this._nm || this.mods; }   // mods with tonight's dream applied
   beginNight() {
     this.night++;
+    this.map = this.mapOrder[(this.night - 1) % this.mapOrder.length] || 'bedroom';
     // tonight's dream
     let dream = 'none';
     if (this.mods.dreams && this.night > 1) {
-      const valid = this.dreamPool.filter(d => DREAMS[d] && d !== 'none');
+      const valid = this.dreamPool.filter(d => DREAMS[d] && d !== 'none' && !(d === 'flood' && this.mapDef.tide));
       const pool = valid.filter(d => !this.dreamsUsed.includes(d));
       const from = pool.length ? pool : valid;
       dream = from[Math.floor(this.rnd() * from.length)] || 'none';
@@ -180,14 +207,16 @@ export class Sim {
     this._nm = nm;
     // world
     const pose = this.night === 1 ? 'back' : POSE_IDS[Math.floor(this.rnd() * POSE_IDS.length)];
+    this.world.setMap(this.map);
     this.world.setPose(pose);
+    this.swayAng = 0; this.swayKick = 0; this.swayT = 0;
     this.g = this._newGerald();
     this.cat = null;
     // Mr. Biscuits visits once a night from night 2 (twice on the last night)
     this.catVisits = this.mods.cat && this.night >= 2 ? (this.lastNight ? 2 : 1) : 0;
     this.catT = 40 + this.rnd() * Math.max(20, this.mods.nightLen - 110);
     this.g.restless = dream === 'ex' ? 2 : 1;
-    this.water = dream === 'flood' ? 0.2 : -5;
+    this.water = dream === 'flood' ? 0.2 : this.mapDef.tide ? TIDE0 : -5;
     this.props = [];
     this.clearLoot();
     for (const s of this.stashes) s.items = [];
@@ -202,7 +231,7 @@ export class Sim {
     }
     this.spawnNightLoot();
     this.phase = PH.INTRO; this.phaseT = PHASE_LEN.intro;
-    this.ev({ e: 'night', n: this.night, of: this.mods.nights, dream, pose, last: this.lastNight });
+    this.ev({ e: 'night', n: this.night, of: this.mods.nights, dream, pose, last: this.lastNight, map: this.map });
   }
   endNight() {
     this.phase = PH.DAWN; this.phaseT = PHASE_LEN.dawn;
@@ -300,6 +329,7 @@ export class Sim {
     for (const type of LOOT_IDS) {
       const def = LOOT[type];
       if (type === 'golfball' && this.dream !== 'golf') continue;
+      if (def.maps && !def.maps.includes(this.map)) continue;
       for (const [rid, w] of Object.entries(def.regions)) {
         const ri = REGION[rid], c = counts.get(ri) || 0;
         if (!c) continue;
@@ -321,8 +351,8 @@ export class Sim {
       ['watch', () => [SPOTS.pocket.x, SPOTS.pocket.z]],
       ['glasses', () => [0, -55.6]],
       ['phone', () => [61, -74], true],
-      ['globe', () => [-61, -62], true],
-      ['remote', () => { const h = rest.R; return [clamp(h.x + 7, -46, 46), h.z - 2]; }],
+      [this.mapDef.jackpots.stand, () => [-61, -62], true],
+      [this.mapDef.jackpots.hand, () => { const h = rest.R; return [clamp(h.x + 7, -46, 46), h.z - 2]; }],
     ];
     const want = Math.min(spots.length, 3 + Math.floor(n / 3) + (this.mods.loot >= 2 ? 2 : 0));
     const order = spots.slice().sort(() => this.rnd() - 0.5).slice(0, want);
@@ -503,6 +533,7 @@ export class Sim {
       if (g.peaT <= 0) { g.peaT = 5 + this.rnd() * 4; const x = (this.rnd() - 0.5) * 90, z = -70 + this.rnd() * 140; this.makeLoot('pea', x, 55, z, this.nm.lootValue); this.sfx('boing', x, 30, z); }
     }
     if (this.dream === 'flood') this.water = Math.min(9.5, this.water + dt * 9 / this.mods.nightLen);
+    else if (this.mapDef.tide) this.water = TIDE0 + (TIDE1 - TIDE0) * clamp(1 - this.phaseT / this.mods.nightLen, 0, 1);
     // noise fades
     // and restless late in the night: noise fades slower
     const late = 1 - 0.35 * clamp(1 - this.phaseT / this.mods.nightLen, 0, 1);
@@ -562,6 +593,7 @@ export class Sim {
     }
   }
   twitch(x, z, amp) {
+    this.kickSway(0.012);
     this.g.bumpList.push({ x, z, r: 4.5, amp: amp * (this.dream === 'jelly' ? 1.5 : 1), t: 0, dur: 0.55 });
     this.sfx('twitch', x, this.world.heightAt(x, z), z);
   }
@@ -707,6 +739,7 @@ export class Sim {
     W.liftL = W.liftR = 0;
     W.startMorph(pose);
     g.morphT = 0; g.morphLen = 2.8;
+    this.kickSway(0.1);
     this.announce('HE\'S ROLLING OVER!', 'Hold on to something', 'warn');
     this.sfx('rollover', 0, 15, -10, { global: 1 });
     this.ev({ e: 'roll', pose });
@@ -722,6 +755,7 @@ export class Sim {
   }
   wakeUp() {
     const g = this.g;
+    this.kickSway(0.06);
     g.mode = 'waking'; g.modeT = 0;
     const loud = this.loudest(12, true);
     g.waker = loud ? loud.seat : -1;
@@ -785,6 +819,7 @@ export class Sim {
     }
   }
   sneezeBlast(scale = 1) {
+    this.kickSway(0.06 * scale);
     const n = SPOTS.noseTip;
     const R = 36 * Math.sqrt(scale);
     this.sfx(scale < 1 ? 'tiny_sneeze' : 'sneeze', n.x, n.y, n.z, { global: 1, pitch: scale < 1 ? 0.55 : 1 });
@@ -821,6 +856,13 @@ export class Sim {
       if (this.phaseT <= 0) this.nextPhase();
     }
     this.stepGerald(rdt);
+    if (this.map === 'hammock' && this.phase !== PH.LOBBY) {
+      this.swayT += rdt; this.swayKick *= Math.exp(-rdt / 7);
+      const A = 0.06 + this.swayKick, w = Math.PI * 2 / 5.2, prev = this.swayAng;
+      this.swayAng = A * Math.sin(this.swayT * w);
+      if (A > 0.11 && Math.sign(prev) !== Math.sign(this.swayAng)) this.sfx('creak', 0, 0, -80, { global: 1, pitch: 0.8 + this.rnd() * 0.3 });
+    } else this.swayAng = 0;
+    if (this.phase === PH.LOBBY || this.phase === PH.DAWN || this.phase === PH.RESULTS || this.phase === PH.SHOP) this.world.warm(this.nextMap);
     // wind from snoring (and the sneeze inhale)
     if (this.g.mode === 'sleep' && this.mods.snoreWind && this.phase !== PH.LOBBY) {
       const ph = this.g.phase;
@@ -882,6 +924,7 @@ export class Sim {
       this.integrate(p, dt, 0, 0, false);
       return;
     }
+    if (this.swayAng && p.st !== ST.HELD) p.vx += this.swayAcc * dt * (p.grounded ? 0.6 : 1);
     if (press & B.EMOTE && inp.em) { p.emote = inp.em; p.emoteT = 2.6; }
     switch (p.st) {
       case ST.HELD: return this.stepHeld(p, dt, press);
@@ -1036,7 +1079,7 @@ export class Sim {
     }
     if (p.grounded && !p.climbing && !sprint) p.stamina = Math.min(PHYS.staminaMax, p.stamina + PHYS.staminaRegen * dt * (p.st === ST.OK ? 1 : 0.5));
     // fell off the bed
-    if (p.y < PHYS.fallY) this.fellOff(p);
+    if (p.y < PHYS.fallY || this.tideOut(p.x, p.y, p.z)) this.fellOff(p);
   }
   isGerald(x, z) {
     const r = this.world.regionAt(x, z);
@@ -1045,12 +1088,14 @@ export class Sim {
   fellOff(p) {
     this.dropEverything(p, true);
     p.st = ST.OUT; p.stT = 3;
-    this.sfx('yelp', p.x, p.y + 10, p.z);
-    const hitter = this.players[p.lastHitBy];
+    const sea = this.map === 'beach' && p.y > PHYS.fallY;
+    this.sfx(sea ? 'washed_away' : 'yelp', p.x, p.y + (sea ? 0 : 10), p.z);
+    if (sea) this.ev({ e: 'splash', x: r2(p.x), z: r2(p.z) });
+    const hitter = this.players[p.lastHitBy], M = this.mapDef;
     if (hitter && hitter !== p && this.t - p.lastHitT < 6) {
       hitter.stats.ringouts++;
-      this.feed(`🥾 ${hitter.name} knocked ${p.name} off the bed`);
-    } else this.feed(`💫 ${p.name} fell off the bed`);
+      this.feed(`🥾 ${hitter.name} ${M.knocked.replace('{v}', p.name)}`);
+    } else this.feed(`💫 ${p.name} ${M.fell}`);
     this.ev({ e: 'out', seat: p.seat });
   }
   actions(p, press, held, carried, dt) {
@@ -1315,7 +1360,7 @@ export class Sim {
     }
     if (p.stT <= 0 && p.grounded && hyp(p.vx, p.vy, p.vz) < 4) { p.st = ST.OK; p.diving = false; }
     if (p.stT < -4) { p.st = ST.OK; p.diving = false; }
-    if (p.y < PHYS.fallY) this.fellOff(p);
+    if (p.y < PHYS.fallY || this.tideOut(p.x, p.y, p.z)) this.fellOff(p);
   }
   stepHeld(p, dt, press) {
     const h = this.players[p.heldBy];
@@ -1380,6 +1425,7 @@ export class Sim {
         if (d < 10 && d > 1.2) { this.wake(l); l.vx += dx / d * 16 * dt; l.vz += dz / d * 16 * dt; l.vy += 4 * dt; }
       }
       const gy = W.groundAt(l.x, l.z, l.y, 0.6);
+      if (l.rest > 0.4 && Math.abs(this.swayAcc) > 7 && l.y < 12) this.wake(l);
       if (l.rest > 0.4) {
         // asleep: ride the ground (breathing), wake if it moves a lot
         const want = gy + def.r;
@@ -1388,6 +1434,7 @@ export class Sim {
         else { l.y = want; if (dy > 0.25 * dt * 60) { l.vy = dy / dt; this.wake(l); } continue; }
       }
       const floaty = def.floaty;
+      if (this.swayAng) l.vx += this.swayAcc * dt * (floaty ? 0.4 : 1);
       l.vy -= g * dt * (floaty ? 0.08 : 1);
       if (floaty) { l.vx *= 1 - dt * 0.6; l.vz *= 1 - dt * 0.6; l.vy *= 1 - dt * 0.8; l.vy += Math.sin(this.t * 1.3 + l.id) * 0.4 * dt; }
       const w = this.windAt;
@@ -1443,7 +1490,7 @@ export class Sim {
           if (d < STASH_R && l.y < W.heightAt(s.x, s.z) + 3.5) { this.deposit(l, s); break; }
         }
       }
-      if (l.st === LS.FREE && l.y < PHYS.fallY) this.removeLoot(l);
+      if (l.st === LS.FREE && (l.y < PHYS.fallY || this.tideOut(l.x, l.y - def.r, l.z))) this.removeLoot(l);
     }
   }
   stashInUse(s) {
@@ -1614,10 +1661,11 @@ export class Sim {
       this.catVisits--;
       this.catT = 70 + this.rnd() * 40;
       const x = (this.rnd() - 0.5) * 70;
-      this.cat = { x, z: 90, y: -30, yaw: Math.PI, state: 'enter', t: 0, life: 38, target: -1, tx: x, tz: 50, sp: 0 };
-      this.announce('MR. BISCUITS IS HERE!', 'Cats chase movement. Hold still...', 'warn');
-      this.sfx('cat_meow', x, 10, 70, { global: 1 });
-      this.feed('🐈 Mr. Biscuits jumped on the bed');
+      const C = CRITTERS[this.mapDef.critter] || CRITTERS.cat;
+      this.cat = { x, z: 90, y: -30, yaw: Math.PI, state: 'enter', t: 0, life: 38, target: -1, tx: x, tz: 50, sp: 0, kind: this.mapDef.critter };
+      this.announce(C.title, C.sub, 'warn');
+      this.sfx(C.call, x, 10, 70, { global: 1 });
+      this.feed(`${C.emoji} ${C.name} ${C.arrive}`);
       return;
     }
     const c = this.cat, W = this.world;
@@ -1656,7 +1704,7 @@ export class Sim {
       const tp = this.players[c.target];
       if (tp && tp.st !== ST.OUT) {
         const d = moveTo(tp.x, tp.z, 8.5);
-        if (d < 10) { c.state = 'crouch'; c.t = 0; c.tx = tp.x; c.tz = tp.z; this.sfx('cat_hiss', c.x, c.y + 6, c.z); }
+        if (d < 10) { c.state = 'crouch'; c.t = 0; c.tx = tp.x; c.tz = tp.z; this.sfx((CRITTERS[c.kind] || CRITTERS.cat).warn, c.x, c.y + 6, c.z); }
       } else {
         if (Math.hypot(c.tx - c.x, c.tz - c.z) < 2) { c.tx = (this.rnd() - 0.5) * 80; c.tz = -60 + this.rnd() * 125; }
         moveTo(c.tx, c.tz, 4.5);
@@ -1685,7 +1733,7 @@ export class Sim {
             const ang = Math.atan2(dx, dz) + (this.rnd() - 0.5);
             this.knock(p, Math.sin(ang) * 22, 13, Math.cos(ang) * 22, 2, -1);
             this.sfx('yelp', p.x, p.y, p.z);
-            this.feed(`🐈 Mr. Biscuits batted ${p.name} across the bed`);
+            { const C = CRITTERS[c.kind] || CRITTERS.cat; this.feed(`${C.emoji} ${C.name} ${C.hit.replace('{v}', p.name)}`); }
             this.ev({ e: 'batted', seat: p.seat });
           }
         }
@@ -1693,7 +1741,7 @@ export class Sim {
       }
     } else if (c.state === 'leave') {
       moveTo(c.tx, c.tz, 9);
-      if (Math.abs(c.x) > 52) { c.y -= dt * 40; if (c.y < -40) { this.cat = null; this.feed('🐈 Mr. Biscuits got bored and left'); return; } }
+      if (Math.abs(c.x) > 52) { c.y -= dt * 40; if (c.y < -40) { const C = CRITTERS[c.kind] || CRITTERS.cat; this.cat = null; this.feed(`${C.emoji} ${C.name} ${C.leave}`); return; } }
     }
     if (c.state !== 'pounce' && c.state !== 'enter' && !(c.state === 'leave' && Math.abs(c.x) > 52)) c.y += (ground(c.x, c.z) - c.y) * Math.min(1, dt * 10);
     // his big fluffy body pushes goblins and loot aside as he walks
@@ -1733,6 +1781,7 @@ export class Sim {
       w: [r2(W.breath), r2(W.mouth), r2(W.morph), r2(W.liftL), r2(W.liftR), W.A.name, W.B.name, r2(g.phase || 0)],
       bu: W.bumps.map(b => [r2(b.x), r2(b.z), r2(b.r), r2(b.a)]), H, P, L, full: full ? 1 : 0,
       X: this.props.map(o => [o.id, o.kind === 'proj' ? 'p_' + o.what : o.kind, r2(o.x), r2(o.y), r2(o.z), r2(o.yaw || 0), o.owner, r2(o.t)]),
+      mp: MAP_IDS.indexOf(this.map), sw: Math.round(this.swayAng * 1000),
       wa: r2(this.water), cat: this.cat ? [r2(this.cat.x), r2(this.cat.y), r2(this.cat.z), r2(this.cat.yaw), CAT_STATES.indexOf(this.cat.state), r2(this.cat.t), r2(this.cat.sp || 0)] : null, ls: g.lullaby > 0 ? 1 : 0,
       st: this.stashes.map(s => s.alert > 0 ? 1 : 0),
     };
@@ -1743,7 +1792,7 @@ export class Sim {
   /** slower-changing info: names, cash, items */
   info() {
     return {
-      mods: this.mods, nights: this.mods.nights, dream: this.dream,
+      mods: this.mods, nights: this.mods.nights, dream: this.dream, map: this.map, nx: this.nextMap,
       nm: { gravity: this.nm.gravity, slippery: this.nm.slippery, speed: this.nm.speed, stamina: this.nm.stamina, golf: this.nm.golf, size: this.nm.size, lootValue: this.nm.lootValue },
       players: this.list.map(p => ({ seat: p.seat, pid: p.pid, name: p.name, bot: p.bot, cos: p.cos, color: p.color, team: p.team, cash: p.cash, tonight: p.tonight, inv: p.inv, fx: compactFx(p.fx), fxNext: p.fxNext || {}, stats: p.stats, totals: p.totals, ready: !!p.shopReady, scale: p.scale, away: !!p.away })),
       awards: this.awardsTonight, final: this.final,

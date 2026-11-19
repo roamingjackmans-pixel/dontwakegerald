@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gerald Loot Test</title>
+<style>
+  :root { --bg: #1d2230; --panel: rgba(18, 21, 30, 0.86); --text: #f2f2f2; --muted: #9aa3b5; --accent: #ffd23f; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.35 system-ui, sans-serif; overflow: hidden; }
+  canvas { display: block; }
+  #labels { position: fixed; inset: 0; pointer-events: none; }
+  .lbl { position: absolute; transform: translate(-50%, -100%); text-align: center; white-space: nowrap;
+         background: rgba(0, 0, 0, 0.55); padding: 2px 6px; border-radius: 6px; font-size: 11px; }
+  .lbl b { color: var(--accent); font-weight: 600; }
+  .lbl .sub { color: var(--muted); font-size: 10px; }
+  .lbl .warn { color: #ff6b6b; }
+  .lbl.new b { color: #7dffb0; }
+  #panel { position: fixed; top: 10px; left: 10px; background: var(--panel); padding: 10px 12px; border-radius: 10px;
+           max-width: min(360px, calc(100vw - 44px)); }
+  #panel h1 { font-size: 15px; margin: 0 0 6px; }
+  #panel label { display: inline-flex; gap: 4px; align-items: center; margin-right: 10px; }
+  #panel select { max-width: 220px; }
+  #stats { color: var(--muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+<div id="labels"></div>
+<div id="panel">
+  <h1>Don't Wake Gerald: loot check</h1>
+  <label><input type="checkbox" id="rotate" checked> rotate</label>
+  <label><input type="checkbox" id="night" checked> game lighting</label>
+  <label><input type="checkbox" id="labelsOn" checked> labels</label>
+  <label><input type="checkbox" id="bounds"> radius spheres</label>
+  <div style="margin-top:6px"><label>focus <select id="focus"><option value="-1">(whole grid)</option></select></label></div>
+  <div id="stats"></div>
+  <div style="color:var(--muted);margin-top:4px">drag to orbit, wheel to zoom. Green names are map loot. A 1.3-tall goblin stands at the front for scale.</div>
+</div>
+
+<script type="module">
+import * as THREE from '../vendor/three.min.js';
+import { LOOT, LOOT_IDS } from '../shared/data.js';
+import { buildLoot } from '../js/lootmesh.js';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.05, 200);
+
+// two lighting rigs: neutral studio, and the game's moonlight + warm lamp
+const studio = new THREE.Group(), night = new THREE.Group();
+studio.add(new THREE.HemisphereLight(0xdfe9ff, 0x4a3b2a, 1.4));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(6, 12, 9); sun.castShadow = true; studio.add(sun);
+night.add(new THREE.HemisphereLight(0x7f8fd0, 0x2a1e2e, 1.15));
+const moon = new THREE.DirectionalLight(0xb4c6ff, 1.6); moon.position.set(12, 16, 3); moon.castShadow = true; night.add(moon);
+const lamp = new THREE.PointLight(0xffb36b, 60, 0, 1.75); lamp.position.set(8, 6, -8); night.add(lamp);
+const fill = new THREE.DirectionalLight(0xffd9b0, 0.35); fill.position.set(-6, 8, 12); night.add(fill);
+for (const l of [sun, moon]) { l.shadow.mapSize.set(2048, 2048); Object.assign(l.shadow.camera, { left: -14, right: 14, top: 14, bottom: -14, near: 1, far: 60 }); }
+scene.add(studio, night);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshStandardMaterial({ color: 0x8a7f9a, roughness: 0.95 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+
+function glowTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.3, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+const GLOW = glowTexture();
+const MAP_LOOT = new Set(LOOT_IDS.filter(id => LOOT[id].maps));
+
+// a goblin bean for scale (origin at feet, 1.3 tall)
+function bean() {
+  const pts = [];
+  for (let i = 0; i <= 28; i++) {
+    const y = (i / 28) * 1.3, mid = 0.55, R = 0.45;
+    const r = y <= mid ? R * Math.pow(Math.max(0, 1 - Math.pow((mid - y) / mid, 3)), 1 / 3) : R * Math.pow(Math.max(0, 1 - Math.pow((y - mid) / 0.75, 2.2)), 1 / 2.2);
+    pts.push(new THREE.Vector2(Math.max(r, i === 0 || i === 28 ? 0 : 0.001), y));
+  }
+  const m = new THREE.Mesh(new THREE.LatheGeometry(pts, 32), new THREE.MeshStandardMaterial({ color: 0x7bd94c, roughness: 0.6 }));
+  m.castShadow = true;
+  return m;
+}
+
+const COLS = 8, SP = 2.8;
+const rows = Math.ceil(LOOT_IDS.length / COLS);
+const items = [];
+const labelsEl = document.getElementById('labels'), focusSel = document.getElementById('focus');
+const radiusMat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.15 });
+
+LOOT_IDS.forEach((id, i) => {
+  const def = LOOT[id];
+  const c = i % COLS, rw = Math.floor(i / COLS);
+  const o = buildLoot(id);
+  o.position.set((c - (COLS - 1) / 2) * SP, def.r, (rw - (rows - 1) / 2) * SP);
+  scene.add(o);
+  if (def.jackpot || def.glow) { // the same glow the game adds in render.js
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: def.glow || def.color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    glow.scale.setScalar(def.r * (def.jackpot ? 6 : 4)); o.add(glow); o.userData.glow = glow;
+  }
+  // how far the model actually reaches from its centre, vs its radius
+  o.updateMatrixWorld(true);
+  let reach = 0;
+  const v = new THREE.Vector3();
+  o.traverse(m => {
+    if (!m.isMesh || m.isSprite) return;
+    const p = m.geometry.attributes.position;
+    const n = m.isInstancedMesh ? m.count : 1, im = new THREE.Matrix4(), w = new THREE.Matrix4();
+    for (let k = 0; k < n; k++) {
+      if (m.isInstancedMesh) { m.getMatrixAt(k, im); w.multiplyMatrices(m.matrixWorld, im); } else w.copy(m.matrixWorld);
+      for (let j = 0; j < p.count; j++) { v.fromBufferAttribute(p, j).applyMatrix4(w); reach = Math.max(reach, v.distanceTo(o.position)); }
+    }
+  });
+  const sph = new THREE.Mesh(new THREE.SphereGeometry(def.r, 16, 10), radiusMat); sph.visible = false; o.add(sph);
+  const div = document.createElement('div');
+  div.className = 'lbl' + (MAP_LOOT.has(id) ? ' new' : '');
+  const over = reach > def.r * 1.12;
+  div.innerHTML = `<b>${def.name}</b><br><span class="sub">${id} · r ${def.r}${def.jackpot ? ' · jackpot' : ''}${def.fragile ? ' · fragile' : ''}${def.floaty ? ' · floaty' : ''}</span><br>` +
+    `<span class="sub${over ? ' warn' : ''}">reach ${(reach / def.r).toFixed(2)} r</span>`;
+  labelsEl.appendChild(div);
+  const opt = document.createElement('option'); opt.value = i; opt.textContent = `${def.name} (${id})`; focusSel.appendChild(opt);
+  items.push({ id, def, o, div, sph, reach, seed: Math.random() * 6 });
+});
+const gob = bean(); gob.position.set(0, 0, (rows / 2 + 0.6) * SP); scene.add(gob);
+document.getElementById('stats').textContent = `${LOOT_IDS.length} loot types · ${MAP_LOOT.size} map loot · ${items.filter(it => it.reach > it.def.r * 1.12).length} over their radius`;
+
+const target = new THREE.Vector3(0, 0.6, 0), goal = target.clone();
+let theta = 0, phi = 0.9, dist = 26, goalDist = 26, dragging = false, lx = 0, ly = 0;
+renderer.domElement.addEventListener('pointerdown', e => { dragging = true; lx = e.clientX; ly = e.clientY; });
+addEventListener('pointerup', () => { dragging = false; });
+addEventListener('pointermove', e => {
+  if (!dragging) return;
+  theta -= (e.clientX - lx) * 0.006; phi = Math.min(1.5, Math.max(0.15, phi - (e.clientY - ly) * 0.006));
+  lx = e.clientX; ly = e.clientY;
+});
+renderer.domElement.addEventListener('wheel', e => { e.preventDefault(); goalDist = Math.min(60, Math.max(1.2, goalDist * (1 + Math.sign(e.deltaY) * 0.1))); }, { passive: false });
+function focusOn(i, d = 3.2) {
+  if (i < 0) { goal.set(0, 0.6, 0); goalDist = 26; phi = 0.9; return; }
+  goal.copy(items[i].o.position); goalDist = d; phi = 1.05;
+}
+focusSel.addEventListener('change', () => focusOn(+focusSel.value));
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+const $ = id => document.getElementById(id);
+let last = performance.now(), time = 0;
+const pv = new THREE.Vector3();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now; time += dt;
+  const isNight = $('night').checked;
+  studio.visible = !isNight; night.visible = isNight;
+  scene.background = new THREE.Color(isNight ? 0x141826 : 0x2a3142);
+  target.lerp(goal, 1 - Math.pow(0.001, dt));
+  dist += (goalDist - dist) * (1 - Math.pow(0.001, dt));
+  camera.position.set(target.x + dist * Math.sin(phi) * Math.sin(theta), target.y + dist * Math.cos(phi), target.z + dist * Math.sin(phi) * Math.cos(theta));
+  camera.lookAt(target);
+  for (const it of items) {
+    if ($('rotate').checked) it.o.rotation.y += dt * 0.5;
+    if (it.o.userData.spin) it.o.userData.spin.rotation.y += dt * 2;
+    if (it.o.userData.glow) it.o.userData.glow.material.opacity = 0.55 + Math.sin(time * 3 + it.seed) * 0.25;
+    it.sph.visible = $('bounds').checked;
+    if ($('labelsOn').checked) {
+      pv.copy(it.o.position); pv.y += it.def.r + 0.35; pv.project(camera);
+      const vis = pv.z < 1 && Math.abs(pv.x) < 1.1 && Math.abs(pv.y) < 1.1;
+      it.div.style.display = vis ? '' : 'none';
+      if (vis) { it.div.style.left = ((pv.x + 1) / 2 * innerWidth) + 'px'; it.div.style.top = ((1 - pv.y) / 2 * innerHeight) + 'px'; }
+    } else it.div.style.display = 'none';
+  }
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+// for poking at in devtools: __loot.view('gnome', 3, 0.4)
+window.__loot = { items, view(id, d = 3.2, th = 0, ph = 1.05) { const i = items.findIndex(it => it.id === id); goal.copy(items[i].o.position); target.copy(goal); goalDist = dist = d; theta = th; phi = ph; } };
+</script>
+</body>
+</html>

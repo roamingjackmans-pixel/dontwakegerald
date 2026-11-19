@@ -1,6 +1,6 @@
 // The in-game overlay (plain DOM on top of the canvas).
 import { ST, LS, PH, swingPower } from '../shared/sim.js';
-import { LOOT, ITEMS, DREAMS, REGIONS, clockLabel, PHYS } from '../shared/data.js';
+import { LOOT, ITEMS, DREAMS, REGIONS, clockLabel, PHYS, MAPS, regionName } from '../shared/data.js';
 import { BED, SEATS, MAT, GRID } from '../shared/world.js';
 import { glyph, input } from './input.js';
 import { EMOTES } from './cosmetics.js';
@@ -36,7 +36,7 @@ export class Hud {
       <canvas class="hud-map" width="150" height="234"></canvas>
       <div class="hud-escape"><div>MASH <b class="g-jump"></b>!</div><div class="ebar"><div></div></div></div>
       <div class="hud-out"></div>
-      <div class="hud-intro"><div class="n"></div><div class="d"></div><div class="dl"></div><div class="dd"></div><div class="cd"></div></div>
+      <div class="hud-intro"><div class="n"></div><div class="mp"></div><div class="mpl"></div><div class="d"></div><div class="dl"></div><div class="dd"></div><div class="cd"></div></div>
       <div class="hud-wheel"></div>
       <div class="hud-scores"></div>
       <div class="hud-voice"></div>
@@ -92,6 +92,9 @@ export class Hud {
     const el = this.el.intro;
     const d = DREAMS[e.dream] || DREAMS.none;
     $('.n', el).textContent = e.last ? `FINAL NIGHT (${e.n} of ${e.of})` : `NIGHT ${e.n} of ${e.of}`;
+    const M = MAPS[e.map] || MAPS.bedroom;
+    $('.mp', el).textContent = `${M.icon} ${M.name}`;
+    $('.mpl', el).textContent = M.line;
     $('.d', el).textContent = d.name;
     $('.dl', el).textContent = `"${d.line}"`;
     $('.dd', el).textContent = (e.last ? 'Everything is worth 50% more tonight. ' : '') + d.desc;
@@ -180,13 +183,13 @@ export class Hud {
       if (me && me.st === ST.HELD) { $('.g-jump', this.el.escape).textContent = glyph('jump'); $('.ebar div', this.el.escape).style.width = Math.min(100, (my.escape || 0) * 100) + '%'; }
       // fell off
       this.el.out.classList.toggle('show', me && me.st === ST.OUT);
-      if (me && me.st === ST.OUT) this.el.out.textContent = 'You fell off the bed! Climbing back up...';
+      if (me && me.st === ST.OUT) this.el.out.textContent = (MAPS[sim.map] || MAPS.bedroom).out;
       // region
       const reg = sim.world.regionAt(me ? me.x : 0, me ? me.z : 0);
       if (reg !== this.lastRegion && reg >= 0 && phase !== PH.LOBBY) {
         this.lastRegion = reg;
         const r = REGIONS[reg];
-        this.el.region.innerHTML = `📍 ${esc(r.name)}${r.sens >= 1.8 ? ' <span class="sens">TOUCHY</span>' : r.sens <= 0.6 ? ' <span class="soft">muffled</span>' : ''}`;
+        this.el.region.innerHTML = `📍 ${esc(regionName(reg, sim.map))}${r.sens >= 1.8 ? ' <span class="sens">TOUCHY</span>' : r.sens <= 0.6 ? ' <span class="soft">muffled</span>' : ''}`;
         this.el.region.classList.remove('show'); void this.el.region.offsetWidth; this.el.region.classList.add('show');
       }
       this.prompts(game, view, me, my, l);
@@ -261,20 +264,23 @@ export class Hud {
     const cw = 150, ch = 234;
     const sx = cw / (BED.x1 - BED.x0 + 30), sz = ch / (BED.z1 - BED.z0 + 6);
     const X = x => (x - BED.x0 + 15) * sx, Z = z => (z - BED.z0 + 3) * sz;
-    const key = W.A.name + (W.morph > 0.5 ? W.B.name : '');
+    const key = W.map + ':' + W.A.name + (W.morph > 0.5 ? W.B.name : '');
     if (key !== this.mapKey) {
       this.mapKey = key;
       const P = W.morph > 0.5 ? W.B : W.A;
       const img = ctx.createImageData(cw, ch);
-      const cols = { [MAT.sheet]: [60, 70, 110], [MAT.pillow]: [150, 150, 170], [MAT.blanket]: [120, 80, 110], [MAT.sock]: [200, 70, 70], [MAT.hair]: [90, 60, 40], [MAT.beard]: [110, 75, 45] };
+      // the bed's colours, or tonight's towel / cot / hammock
+      const M = { bedroom: [[60, 70, 110], [120, 80, 110], [120, 160, 215]], beach: [[205, 120, 110], [210, 175, 90], [40, 150, 140]], camp: [[95, 105, 70], [50, 85, 150], [180, 60, 55]], hammock: [[200, 150, 90], [210, 200, 180], [180, 155, 215]] }[P.map] || [[60, 70, 110], [120, 80, 110], [120, 160, 215]];
+      const cols = { [MAT.sheet]: M[0], [MAT.sand]: [190, 160, 110], [MAT.pillow]: [150, 150, 170], [MAT.blanket]: M[1], [MAT.sock]: [200, 70, 70], [MAT.hair]: [90, 60, 40], [MAT.beard]: [110, 75, 45] };
+      const off = P.map === 'beach' ? [30, 70, 120] : [20, 22, 40];
       for (let py = 0; py < ch; py++) for (let px = 0; px < cw; px++) {
         const x = px / sx + BED.x0 - 15, z = py / sz + BED.z0 - 3;
         const o = (py * cw + px) * 4;
         const c = Math.round((x - GRID.x0) / GRID.cell), r = Math.round((z - GRID.z0) / GRID.cell);
-        let col = [20, 22, 40], a = 160;
+        let col = off, a = 160;
         if (c >= 0 && r >= 0 && c < GRID.nx && r < GRID.nz) {
           const i = r * GRID.nx + c;
-          col = cols[P.mat[i]] || (P.mat[i] === MAT.shirt || P.mat[i] === MAT.pocket ? [120, 160, 215] : [235, 175, 140]);
+          col = cols[P.mat[i]] || (P.mat[i] === MAT.shirt || P.mat[i] === MAT.pocket ? M[2] : [235, 175, 140]);
           const h = P.full[i];
           const shade = 0.75 + Math.min(0.35, h / 60);
           col = col.map(v => Math.min(255, v * shade)); a = 230;

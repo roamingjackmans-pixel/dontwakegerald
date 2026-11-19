@@ -61,6 +61,12 @@
 </section>
 
 <section>
+  <h2>Map ambience</h2>
+  <div class="grid" id="ambGrid"></div>
+  <p class="note" style="margin:8px 0 0">setAmbience(id): crossfades over ~1.5 s and follows the <b>sfx</b> volume. bedroom = silence.</p>
+</section>
+
+<section>
   <h2>Snore</h2>
   <label><span class="k">level</span><input id="snoreLvl" type="range" min="0" max="1" step="0.01" value="0"><output>0</output></label>
   <label><span class="k">breath period (s)</span><input id="snorePer" type="range" min="1.5" max="8" step="0.1" value="4.2"><output>4.2</output></label>
@@ -79,15 +85,17 @@
 </section>
 
 <script type="module">
-import { initAudio, audioCtx, setVolumes, sfx, startMusic, setIntensity, setSnore, mumble, duckMusic } from '../js/audio.js';
+import { initAudio, audioCtx, setVolumes, sfx, startMusic, setIntensity, setSnore, mumble, duckMusic, setAmbience } from '../js/audio.js';
 
 const SFX = ['step', 'step_soft', 'jump', 'land', 'land_big', 'slap', 'swing_whoosh', 'club_hit', 'launch', 'grab', 'drop', 'throw',
   'deposit', 'cash', 'break_glass', 'pop', 'squish', 'pancake', 'boing', 'yelp', 'steal', 'stash_alarm', 'buy', 'denied',
   'ui_move', 'ui_click', 'ui_back', 'countdown', 'go', 'night_start', 'dawn', 'alarm_clock', 'tick', 'twitch', 'scratch',
   'swat_warn', 'swat_impact', 'sneeze_in', 'sneeze', 'rollover', 'wake_roar', 'freeze', 'flick', 'grumble', 'chain', 'banana',
   'kazoo', 'tiny_sneeze', 'pepper', 'feather', 'magnet', 'spray', 'trap_snap', 'coffee', 'lullaby', 'emote', 'trick_shot',
-  'level_up', 'unlock', 'join', 'leave', 'ready', 'error', 'splash', 'cat_meow', 'cat_hiss', 'wind'];
+  'level_up', 'unlock', 'join', 'leave', 'ready', 'error', 'splash', 'cat_meow', 'cat_hiss', 'wind',
+  'gull_call', 'gull_screech', 'raccoon_chitter', 'raccoon_hiss', 'washed_away', 'creak', 'harmonica', 'fire_pop'];
 const MOODS = ['menu', 'night', 'tense', 'awake', 'shop', 'results'];
+const AMBIENCES = ['bedroom', 'beach', 'camp', 'hammock'];
 const $ = id => document.getElementById(id);
 
 // Start/resume audio on any interaction (capture phase so it runs before button handlers).
@@ -119,6 +127,14 @@ for (const m of [...MOODS, null]) {
   b.onclick = () => { initAudio(); startMusic(m); for (const x of moodBtns) x.classList.toggle('on', x === b && m !== null); };
   moodBtns.push(b);
   $('moodGrid').append(b);
+}
+const ambBtns = [];
+for (const a of [...AMBIENCES, null]) {
+  const b = document.createElement('button');
+  b.textContent = a || 'null (silence)';
+  b.onclick = () => { initAudio(); setAmbience(a); for (const x of ambBtns) x.classList.toggle('on', x === b && a !== null); };
+  ambBtns.push(b);
+  $('ambGrid').append(b);
 }
 $('intensity').addEventListener('input', e => setIntensity(+e.target.value));
 $('duck').onclick = () => duckMusic(0.6);

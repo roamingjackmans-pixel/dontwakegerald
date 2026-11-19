@@ -14,6 +14,7 @@
  *   music players ──► musicBus ──► duck ───────────────┼──► master ──► compressor ──► soft clip ──► out
  *                                    └──► musicWet ──► reverb
  *   snore bed ──► snoreBus ────────────────────────────┘  (+ a small reverb send)
+ *   map ambience beds ──► ambBus ──► sfxBus             (+ a small send into sfxWet)
  */
 
 // ---------------------------------------------------------------------------
@@ -30,6 +31,7 @@ const MAX_VOICES = 24;
 const DEDUPE_MS = 30;
 let intensity = 0;       // Gerald's noise meter, 0..1
 let pendingMood = null;  // mood requested before the context existed
+const AMB_TRIM = 0.7;    // ambience bus level (it's background: keep it under the sfx)
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -138,10 +140,12 @@ function buildGraph() {
   duck.connect(gainNode(0.32, reverb));
   const snoreBus = gainNode(vols.sfx, master);
   snoreBus.connect(gainNode(0.15, reverb));
+  const ambBus = gainNode(AMB_TRIM, sfxBus);      // map ambience rides the sfx volume
+  ambBus.connect(gainNode(0.12, sfxWet));
 
   NB = { white: makeNoise('white'), pink: makeNoise('pink'), brown: makeNoise('brown') };
   DIST = makeCurve(5);
-  G = { comp, master, reverb, sfxBus, sfxWet, musicBus, duck, snoreBus };
+  G = { comp, master, reverb, sfxBus, sfxWet, musicBus, duck, snoreBus, ambBus };
 }
 
 // ---------------------------------------------------------------------------
@@ -817,6 +821,86 @@ const SFX = {
     noise(o, t, { fpts: [[0, 900 * p], [0.5, 1500 * p], [1.2, 1000 * p]], q: 14, gpts: [[0, 0], [0.5, 1.5], [1.2, 0]] });
     return 1.3;
   }],
+
+  // ----- the beach, the campout, the hammock -----
+  gull_call: [0.4, (t, o, p) => { // Captain Squawk arrives: an enormous raspy "SQUAWK-awk-awk!"
+    const sq = (s, f, len, g) => formant(o, s, {
+      keys: [[0, f * 0.8, 'e', 0], [0.03, f, 'e', g], [len * 0.35, f * 1.18, 'a', g], [len * 0.8, f * 0.92, 'a', g * 0.8], [len, f * 0.72, 'o', 0]],
+      p, scale: 1.25, breath: 0.3, growl: [52, 0.4], vib: [9, 25], gain: 0.8,
+    });
+    sq(t, 560, 0.42, 1);
+    sq(t + 0.5, 530, 0.17, 0.8);
+    sq(t + 0.73, 490, 0.21, 0.7);
+    return 1.05;
+  }],
+  gull_screech: [0.15, (t, o, p) => { // rising "keeeEEE!" right before the dive
+    formant(o, t, { keys: [[0, 620, 'e', 0], [0.04, 680, 'e', 0.7], [0.3, 980, 'i', 0.9], [0.45, 1250, 'i', 0.85], [0.52, 1300, 'i', 0]], p, scale: 1.35, breath: 0.35, growl: [60, 0.3], vib: [12, 35], gain: 0.45 });
+    noise(o, t + 0.05, { fpts: [[0, 600 * p], [0.5, 2600 * p]], q: 1.4, gpts: [[0, 0], [0.35, 0.3], [0.5, 0]] }); // air rushing past
+    return 0.6;
+  }],
+  raccoon_chitter: [0.3, (t, o, p) => { // Bandit arrives: an excited, chubby "chi-chi-chi-chi... chrrrr!"
+    const keys = [[0, 700, 'i', 0]];
+    let s = 0.02;
+    for (let i = 0; i < 8; i++) {
+      const f = (820 + 160 * Math.sin(i * 1.7) + i * 25) * rnd(0.95, 1.05);
+      keys.push([s, f, 'i', 0.05], [s + 0.018, f * 1.12, 'e', 0.85], [s + 0.045, f * 0.96, 'i', 0.5], [s + 0.062, f * 0.9, 'i', 0.03]);
+      s += 0.075 + (i % 3 === 2 ? 0.03 : 0);
+    }
+    formant(o, t, { keys, p, scale: 1.5, breath: 0.25, gain: 0.6 });
+    formant(o, t + s + 0.02, { keys: [[0, 760, 'e', 0], [0.04, 820, 'e', 0.75], [0.3, 900, 'i', 0.65], [0.42, 700, 'u', 0]], p, scale: 1.5, breath: 0.25, growl: [26, 0.9], gain: 0.6 }); // the trill
+    return s + 0.5;
+  }],
+  raccoon_hiss: [0.12, (t, o, p) => { // huffy "hff... HFFF" chuff before the pounce
+    noise(o, t, { buf: 'pink', f: 1400 * p, q: 0.9, gpts: [[0, 0], [0.012, 1.2], [0.1, 0.35], [0.16, 0]] });
+    noise(o, t + 0.2, { buf: 'pink', fpts: [[0, 1800 * p], [0.3, 900 * p]], q: 0.8, gpts: [[0, 0], [0.012, 1.9], [0.12, 0.8], [0.3, 0]] });
+    noise(o, t + 0.2, { type: 'highpass', f: 3500 * p, gpts: [[0, 0], [0.01, 0.3], [0.2, 0]] });
+    tone(o, t + 0.2, { type: 'sawtooth', f: 150 * p, f1: 95 * p, gpts: [[0, 0], [0.02, 0.2], [0.22, 0]], lp: 700 }); // a little chest rumble
+    return 0.55;
+  }],
+  washed_away: [0.3, (t, o, p) => { // a wave rushes in and drags off... then a little "blub-blub" out at sea
+    noise(o, t, { buf: 'pink', type: 'lowpass', fpts: [[0, 300 * p], [0.55, 2200 * p], [0.9, 1200 * p], [1.3, 400 * p]], q: 0.8, gpts: [[0, 0], [0.5, 0.72], [0.65, 0.88], [1.3, 0]] });
+    noise(o, t, { buf: 'brown', type: 'lowpass', f: 350, gpts: [[0, 0], [0.55, 0.65], [1.2, 0]] });   // the weight of the water
+    noise(o, t + 0.45, { type: 'highpass', f: 2500 * p, gpts: [[0, 0], [0.15, 0.25], [0.8, 0]] }); // foam fizz
+    for (const [dt, f] of [[1.02, 300], [1.17, 380], [1.27, 460]]) tone(o, t + dt, { f: f * p, f1: f * 2.4 * p, ft: 0.06, a: 0.004, d: 0.09, v: 0.35 });
+    return 1.45;
+  }],
+  creak: [0.25, (t, o, p) => { // one slow hammock-rope "creeeak": stick-slip friction rung through woody resonances
+    const dur = 0.85;
+    const env = gainNode(0, o);
+    pts(env.gain, t, [[0, 0], [0.12, 1], [0.5, 0.85], [0.72, 0.6], [dur, 0]]);
+    const slip = ctx.createOscillator();
+    slip.type = 'sawtooth';
+    pts(slip.frequency, t, [[0, 38 * p], [0.25, 62 * p], [0.55, 48 * p], [dur, 30 * p]], true);
+    lfo(slip.detune, t, dur, 7, 120);
+    for (const [f, q, a] of [[620, 7, 2.4], [1350, 9, 1.3], [2600, 6, 0.45]]) {
+      const b = biquad('bandpass', f * p, q);
+      slip.connect(b); b.connect(gainNode(a, env));
+    }
+    slip.start(t); slip.stop(t + dur + 0.05);
+    noise(o, t, { buf: 'brown', type: 'lowpass', f: 500, gpts: [[0, 0], [0.15, 0.15], [dur, 0]] }); // fibres rubbing
+    return dur + 0.1;
+  }],
+  harmonica: [0.2, (t, o, p) => { // "hwaah": a bright two-note chord, a touch out of tune, scooped in with a wobble
+    const dur = 0.55;
+    const nasal = biquad('peaking', 1500 * p, 1.4, 7), lp = biquad('lowpass', 4500 * p, 0.7), env = gainNode(1, o);
+    nasal.connect(lp); lp.connect(env);
+    lfo(env.gain, t, dur, 5.5, 0.15); // hand-cupping wah
+    for (const [f, det] of [[523.25, 16], [659.25, -12]]) { // C5 + E5
+      for (const [type, v] of [['sawtooth', 0.09], ['square', 0.05]]) {
+        tone(nasal, t, { type, det, fpts: [[0, f * p * 0.95], [0.07, f * p], [dur, f * p * 1.004]], gpts: [[0, 0], [0.035, v], [dur * 0.7, v * 0.85], [dur, 0]] });
+      }
+    }
+    noise(o, t, { buf: 'pink', f: 1800, q: 0.8, gpts: [[0, 0], [0.03, 0.18], [0.12, 0.05], [dur, 0]] }); // breath
+    return dur + 0.05;
+  }],
+  fire_pop: [0.12, (t, o, p) => { // a single campfire crackle POP and a couple of spitting embers
+    const r = p * rnd(0.85, 1.15);
+    noise(o, t, { f: 2600 * r, q: 0.9, a: 0.0005, d: 0.02, v: 0.8 });
+    noise(o, t, { type: 'highpass', f: 5000, a: 0.0005, d: 0.008, v: 0.5 });
+    tone(o, t, { f: 240 * r, f1: 80 * r, a: 0.001, d: 0.05, v: 0.35 });
+    for (let i = 0; i < 3; i++) noise(o, t + 0.03 + Math.random() * 0.12, { f: rnd(1800, 4500) * r, q: 2, a: 0.0005, d: rnd(0.006, 0.014), v: rnd(0.2, 0.45) });
+    return 0.22;
+  }],
 };
 
 // ---------------------------------------------------------------------------
@@ -997,10 +1081,15 @@ function makePlayer(mood) {
   return { mood, def, out, flt, in: flt, step: 0, loop: 0, next: now + 0.06, stopAt: 0 };
 }
 
-/** Cancel future automation but keep the parameter where it is right now. */
+/**
+ * Cancel future automation but keep the parameter where it is right now.
+ * (Not cancelAndHoldAtTime: Chrome holds the wrong value once the last ramp has finished, e.g. ~0.6
+ * instead of 1, so every fade-out started with a jump. `.value` is the live computed value.)
+ */
 function holdAt(param, now) {
-  if (param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(now);
-  else { const v = param.value; param.cancelScheduledValues(now); param.setValueAtTime(v, now); }
+  const v = param.value;
+  param.cancelScheduledValues(now);
+  param.setValueAtTime(v, now);
 }
 
 function schedule() {
@@ -1076,6 +1165,193 @@ function killSnore() {
 }
 
 // ---------------------------------------------------------------------------
+// Map ambience: one quiet looping bed per map (beach waves, campfire, night garden).
+// Each bed is built once from looping noise + a few oscillators. Everything that moves is
+// AudioParam automation, scheduled a few seconds ahead by a 1 Hz timer (no per-frame JS).
+// ---------------------------------------------------------------------------
+const AMB_FADE = 1.5;
+let amb = null;          // the bed that's playing (or fading in)
+let ambGone = [];        // beds fading out, freed once silent
+let ambTimer = null;
+let ambWant = null;      // requested bed, remembered until the context exists
+
+function bedSrc(bed, kind) {
+  const now = ctx.currentTime, s = noiseSrc(kind, now, now + 86400);
+  bed.srcs.push(s);
+  return s;
+}
+function bedOsc(bed, f, type = 'sine') {
+  const o = ctx.createOscillator();
+  o.type = type;
+  o.frequency.value = f;
+  o.start(ctx.currentTime);
+  bed.srcs.push(o);
+  return o;
+}
+/** Free-running LFO: wobbles `param` by +-depth around its value. */
+function bedLfo(bed, param, rate, depth) { bedOsc(bed, rate).connect(gainNode(depth, param)); }
+function panTo(node, pan, dest) {
+  if (pan && ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = pan; node.connect(p); p.connect(dest); }
+  else node.connect(dest);
+}
+/** A recurring event: run(t) schedules one at time t and returns when the next is due. */
+function job(bed, first, run) { bed.jobs.push({ next: ctx.currentTime + first, run }); }
+/** A short percussive spike on a gain param (crackles, pops). */
+function spike(param, t, v, dec) {
+  param.setValueAtTime(0, t);
+  param.linearRampToValueAtTime(v, t + 0.0008);
+  param.setTargetAtTime(0, t + 0.0008, dec / 3);
+}
+
+/** A cricket: a high sine, pulsed by a fast LFO, gated into little 2-4 pulse chirps. */
+function cricket(bed, f, rate, v, pan) {
+  const pulse = gainNode(0.5, null);
+  bedOsc(bed, f).connect(pulse);
+  bedOsc(bed, rate).connect(gainNode(0.5, pulse.gain));
+  const gate = gainNode(0, null);
+  pulse.connect(gate);
+  panTo(gate, pan, bed.out);
+  const g = gate.gain;
+  job(bed, rnd(0.1, 1.5), t => {
+    const on = (2 + ((Math.random() * 3) | 0)) / rate, lv = v * rnd(0.6, 1);
+    g.setValueAtTime(0, t); g.linearRampToValueAtTime(lv, t + 0.012);
+    g.setValueAtTime(lv, t + on - 0.012); g.linearRampToValueAtTime(0, t + on);
+    return t + on + (Math.random() < 0.12 ? rnd(1.5, 4) : rnd(0.22, 0.55));
+  });
+}
+
+const BEDS = {
+  beach(bed) {
+    // a soft wind: two decorrelated pink noises, slowly breathing, spread wide
+    for (const pan of [-0.6, 0.6]) {
+      const bp = biquad('bandpass', 450, 0.6), g = gainNode(0.08, null);
+      bedSrc(bed, 'pink').connect(bp); bp.connect(g); panTo(g, pan, bed.out);
+      bedLfo(bed, g.gain, rnd(0.05, 0.09), 0.035);
+      bedLfo(bed, bp.frequency, rnd(0.04, 0.07), 150);
+    }
+    // waves: a low wash that swells in, breaks, and drags back out with a fizz of foam
+    const W0 = 0.03, wLp = biquad('lowpass', 240, 0.5), wG = gainNode(W0, bed.out);
+    bedSrc(bed, 'brown').connect(gainNode(1, wLp));
+    bedSrc(bed, 'pink').connect(gainNode(0.5, wLp));
+    wLp.connect(wG);
+    const fHp = biquad('highpass', 3000, 0.5), fG = gainNode(0, null);
+    bedSrc(bed, 'white').connect(fHp); fHp.connect(fG); panTo(fG, 0.2, bed.out);
+    job(bed, rnd(0.3, 1.5), t => {
+      const period = rnd(6, 9.5), rise = rnd(2, 3), back = period - rise - rnd(0.4, 1.2), A = rnd(0.5, 1);
+      const g = wG.gain, f = wLp.frequency, fz = fG.gain;
+      g.setValueAtTime(W0, t); g.linearRampToValueAtTime(W0 + A * 0.27, t + rise * 0.8); g.linearRampToValueAtTime(W0 + A * 0.36, t + rise); g.linearRampToValueAtTime(W0, t + rise + back);
+      f.setValueAtTime(240, t); f.exponentialRampToValueAtTime(500 + 1100 * A, t + rise); f.exponentialRampToValueAtTime(240, t + rise + back);
+      fz.setValueAtTime(0, t + rise * 0.75); fz.linearRampToValueAtTime(0.04 * A, t + rise + 0.25);
+      fz.linearRampToValueAtTime(0.016 * A, t + rise + back * 0.55); fz.linearRampToValueAtTime(0, t + rise + back);
+      return t + period;
+    });
+  },
+  camp(bed) {
+    // the fire's low roar and soft hiss, flickering
+    const roarLp = biquad('lowpass', 280, 0.6), roar = gainNode(0.15, bed.out);
+    bedSrc(bed, 'brown').connect(roarLp); roarLp.connect(roar);
+    bedLfo(bed, roar.gain, 0.31, 0.04); bedLfo(bed, roar.gain, 1.7, 0.025);
+    const hissBp = biquad('bandpass', 2600, 0.5), hiss = gainNode(0.018, bed.out);
+    bedSrc(bed, 'pink').connect(hissBp); hissBp.connect(hiss);
+    bedLfo(bed, hiss.gain, 0.53, 0.007);
+    // crackles: one noise, one filter, one gain, spiked at random (in little clusters now and then)
+    const cBp = biquad('bandpass', 3000, 1.2), cG = gainNode(0, null);
+    bedSrc(bed, 'white').connect(cBp); cBp.connect(cG); panTo(cG, -0.15, bed.out);
+    job(bed, 0.2, t => {
+      const n = Math.random() < 0.3 ? 2 + ((Math.random() * 4) | 0) : 1;
+      for (let i = 0; i < n; i++) {
+        const dec = rnd(0.004, 0.014);
+        cBp.frequency.setValueAtTime(rnd(1800, 6500), t);
+        spike(cG.gain, t, rnd(0.1, 0.36), dec);
+        t += dec + rnd(0.015, 0.07);
+      }
+      return t + 0.03 - Math.log(1 - Math.random()) * 0.35;
+    });
+    // pops: louder, lower, with a little thump under them
+    const pBp = biquad('bandpass', 1200, 0.9), pG = gainNode(0, null), thLp = biquad('lowpass', 300), thG = gainNode(0, bed.out);
+    bedSrc(bed, 'white').connect(pBp); pBp.connect(pG); panTo(pG, 0.1, bed.out);
+    bedSrc(bed, 'brown').connect(thLp); thLp.connect(thG);
+    job(bed, rnd(1, 3), t => {
+      const dec = rnd(0.02, 0.045);
+      pBp.frequency.setValueAtTime(rnd(800, 1800), t);
+      spike(pG.gain, t, rnd(0.2, 0.4), dec);
+      spike(thG.gain, t, rnd(0.25, 0.5), dec * 1.5);
+      return t + rnd(1.2, 6);
+    });
+    cricket(bed, 4400, 34, 0.03, -0.55);
+    cricket(bed, 4950, 41, 0.024, 0.6);
+  },
+  hammock(bed) {
+    cricket(bed, 4150, 32, 0.055, -0.7);
+    cricket(bed, 4700, 39, 0.045, 0.15);
+    cricket(bed, 5300, 36, 0.035, 0.65);
+    // a breeze in the leaves: a soft rush plus a fluttery rustle, both swelling in gusts
+    const G0 = 0.3, gust = gainNode(G0, bed.out);
+    const rBp = biquad('bandpass', 1500, 0.5);
+    bedSrc(bed, 'pink').connect(rBp); rBp.connect(gainNode(0.15, gust));
+    const lHp = biquad('highpass', 3800, 0.6), flutter = gainNode(0.5, null);
+    bedSrc(bed, 'white').connect(lHp); lHp.connect(flutter); flutter.connect(gainNode(0.09, gust));
+    bedLfo(bed, flutter.gain, 6.3, 0.25); bedLfo(bed, flutter.gain, 9.7, 0.2);
+    job(bed, rnd(0.5, 2), t => {
+      const up = rnd(1.2, 2.5), hold = rnd(0.3, 1.5), down = rnd(1.5, 3), A = rnd(0.4, 0.9), g = gust.gain;
+      g.setValueAtTime(G0, t); g.linearRampToValueAtTime(G0 + A, t + up); g.setValueAtTime(G0 + A, t + up + hold); g.linearRampToValueAtTime(G0, t + up + hold + down);
+      return t + up + hold + down + rnd(0.5, 5);
+    });
+    // now and then the hammock rope creaks (one reused stick-slip voice, silent in between)
+    const slip = bedOsc(bed, 40, 'sawtooth'), cG = gainNode(0, null);
+    for (const [f, q, a] of [[600, 7, 2], [1300, 9, 1]]) { const b = biquad('bandpass', f, q); slip.connect(b); b.connect(gainNode(a, cG)); }
+    panTo(cG, -0.25, bed.out);
+    const creakAt = (t, A) => {
+      const d = rnd(0.6, 0.9), f0 = rnd(32, 40), fr = slip.frequency;
+      fr.setValueAtTime(f0, t); fr.exponentialRampToValueAtTime(f0 * 1.6, t + d * 0.35); fr.exponentialRampToValueAtTime(f0 * 0.8, t + d);
+      cG.gain.setValueAtTime(0, t); cG.gain.linearRampToValueAtTime(A, t + 0.1); cG.gain.linearRampToValueAtTime(A * 0.7, t + d * 0.7); cG.gain.linearRampToValueAtTime(0, t + d);
+    };
+    job(bed, rnd(3, 8), t => {
+      creakAt(t, 0.12 * rnd(0.6, 1));
+      if (Math.random() < 0.5) creakAt(t + rnd(1.6, 2.2), 0.12 * rnd(0.4, 0.7)); // ...and it swings back
+      return t + rnd(10, 22);
+    });
+  },
+};
+
+function killBed(bed) {
+  for (const s of bed.srcs) { try { s.stop(); } catch (e) { /* already stopped */ } }
+  try { bed.out.disconnect(); } catch (e) { /* gone */ }
+}
+
+function makeBed(id) {
+  const now = ctx.currentTime;
+  const out = gainNode(0, G.ambBus);
+  out.gain.setValueAtTime(0, now);
+  out.gain.linearRampToValueAtTime(1, now + AMB_FADE);
+  const bed = { id, out, srcs: [], jobs: [], stopAt: 0 };
+  try { BEDS[id](bed); } catch (e) { killBed(bed); return null; } // never leave half a bed running
+  return bed;
+}
+
+function fadeBed(bed, to, now) {
+  holdAt(bed.out.gain, now);
+  bed.out.gain.linearRampToValueAtTime(to, now + AMB_FADE);
+}
+
+function ambSchedule() {
+  try {
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    // background tabs throttle timers: schedule much further ahead there
+    const until = now + (typeof document !== 'undefined' && document.hidden ? 12 : 4);
+    ambGone = ambGone.filter(b => { if (now > b.stopAt) { killBed(b); return false; } return true; });
+    if (amb) {
+      for (const j of amb.jobs) {
+        if (j.next < now) j.next = now + rnd(0.05, 0.3); // we were asleep: carry on from here
+        for (let n = 0; j.next < until && n < 400; n++) j.next = Math.max(j.next + 0.002, j.run(j.next));
+      }
+    }
+    if (!amb && !ambGone.length && ambTimer) { clearInterval(ambTimer); ambTimer = null; }
+  } catch (e) { /* never throw from a timer */ }
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -1092,6 +1368,7 @@ export function initAudio() {
         return;
       }
       if (pendingMood) startMusic(pendingMood);
+      if (ambWant) setAmbience(ambWant);
       setIntensity(intensity);
     }
     if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
@@ -1158,6 +1435,29 @@ export function startMusic(mood) {
     if (m) players.push(makePlayer(m));
     if (!schedTimer && players.length) schedTimer = setInterval(schedule, 25);
     schedule();
+  } catch (e) { /* ignore */ }
+}
+
+/**
+ * Looping background ambience for wherever Gerald fell asleep: 'beach' | 'camp' | 'hammock'.
+ * 'bedroom', null (or anything unknown) = silence. Crossfades over ~1.5 s, rides the sfx volume,
+ * and can be called before initAudio (it starts once audio does). Repeat calls are cheap no-ops.
+ */
+export function setAmbience(id) {
+  try {
+    const want = typeof id === 'string' && hasOwn(BEDS, id) ? id : null;
+    ambWant = want;
+    if (!ctx || !G) return;
+    if ((amb ? amb.id : null) === want) return;
+    const now = ctx.currentTime;
+    if (amb) { fadeBed(amb, 0, now); amb.stopAt = now + AMB_FADE + 0.25; ambGone.push(amb); amb = null; }
+    if (want) {
+      const i = ambGone.findIndex(b => b.id === want);
+      if (i >= 0) { amb = ambGone.splice(i, 1)[0]; amb.stopAt = 0; fadeBed(amb, 1, now); } // still fading out: bring it back
+      else amb = makeBed(want);
+    }
+    if (!ambTimer) ambTimer = setInterval(ambSchedule, 1000);
+    ambSchedule();
   } catch (e) { /* ignore */ }
 }
 

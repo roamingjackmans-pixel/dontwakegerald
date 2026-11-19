@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scenery Test</title>
+<style>
+  :root { --panel: rgba(18, 21, 30, 0.86); --text: #f2f2f2; --muted: #9aa3b5; --accent: #ffd23f; }
+  html, body { margin: 0; height: 100%; background: #0b0d1c; color: var(--text); font: 13px/1.35 system-ui, sans-serif; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #panel { position: fixed; top: 10px; left: 10px; background: var(--panel); padding: 10px 12px; border-radius: 10px; max-width: min(380px, calc(100vw - 44px)); }
+  #panel h1 { font-size: 15px; margin: 0 0 6px; }
+  #panel .row { margin: 4px 0; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+  #panel button { font: inherit; padding: 2px 7px; border-radius: 6px; border: 1px solid #445; background: #262b3a; color: var(--text); cursor: pointer; }
+  #panel button.on { background: var(--accent); color: #111; }
+  #stats { color: var(--muted); margin-top: 6px; white-space: pre; font: 11px/1.4 ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<div id="panel">
+  <h1>Don't Wake Gerald: scenery check</h1>
+  <div class="row" id="sets"></div>
+  <div class="row" id="views"></div>
+  <div class="row">
+    <label><input type="checkbox" id="wire" checked> solids</label>
+    <label><input type="checkbox" id="slab" checked> slab</label>
+    <label><select id="surf"><option value="flat">flat slab</option><option value="real">real surface</option></select></label>
+    <label><input type="checkbox" id="sea" checked> sea</label>
+    <label><input type="checkbox" id="dark"> lights out</label>
+    <label><input type="checkbox" id="sway" checked> sway</label>
+    <label><input type="checkbox" id="crit" checked> critters</label>
+    <label><select id="q"><option>high</option><option>medium</option><option>low</option></select></label>
+  </div>
+  <div id="stats"></div>
+  <div style="color:var(--muted);margin-top:4px">drag to orbit, wheel to zoom, right-drag to pan</div>
+</div>
+<script type="module">
+import * as THREE from '../vendor/three.min.js';
+import { buildSet, buildCritter } from '../js/scenery.js';
+
+const T = 1.2, FLOOR_Y = -55;
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x0d1024, 0.0062);
+const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 900);
+const hemi = new THREE.HemisphereLight(0x7f8fd0, 0x2a1e2e, 1.15); scene.add(hemi);
+const moon = new THREE.DirectionalLight(0xb4c6ff, 1.6); moon.castShadow = true; moon.shadow.mapSize.set(2048, 2048);
+Object.assign(moon.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 500 });
+moon.shadow.bias = -0.0008; moon.shadow.normalBias = 0.05; scene.add(moon, moon.target);
+const lamp = new THREE.PointLight(0xffb36b, 2600, 0, 1.75); scene.add(lamp);
+const extra = new THREE.PointLight(0xff8a3a, 0, 0, 1.75); scene.add(extra);
+const fill = new THREE.DirectionalLight(0xffd9b0, 0.35); fill.position.set(-60, 80, 120); scene.add(fill);
+
+// the game's clock face
+const cc = document.createElement('canvas'); cc.width = 256; cc.height = 160;
+const clockTex = new THREE.CanvasTexture(cc); clockTex.colorSpace = THREE.SRGBColorSpace;
+{ const g = cc.getContext('2d'); g.fillStyle = '#120a0a'; g.fillRect(0, 0, 256, 160); g.fillStyle = '#ff3b3b'; g.shadowColor = '#ff2020'; g.shadowBlur = 18;
+  g.font = '700 92px "Courier New", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('2:47', 128, 78); g.font = '700 26px "Courier New", monospace'; g.fillText('AM', 222, 138); clockTex.needsUpdate = true; }
+
+// ---- solids (the same as world.js buildSolids for these maps) drawn as wireframes
+const solids = [
+  { kind: 'box', x: 62.5, z: -68, hx: 11, hz: 12, y0: FLOOR_Y, y1: T }, { kind: 'box', x: -62.5, z: -68, hx: 11, hz: 12, y0: FLOOR_Y, y1: T },
+  { kind: 'cyl', x: 68, z: -74, r: 3.2, y0: T, y1: T + 1.2 }, { kind: 'cyl', x: 68, z: -74, r: 0.6, y0: T, y1: T + 22 },
+  { kind: 'box', x: 59.5, z: -66, hx: 2, hz: 4.2, y0: T, y1: T + 6.2 }, { kind: 'cyl', x: 69, z: -60.5, r: 2.2, y0: T, y1: T + 7 },
+  { kind: 'box', x: -64, z: -72, hx: 7, hz: 5, y0: T, y1: T + 1.6 }, { kind: 'box', x: -65, z: -73, hx: 5.5, hz: 4, y0: T + 1.6, y1: T + 3.0 },
+  { kind: 'box', x: -64.5, z: -72.5, hx: 4.5, hz: 3.4, y0: T + 3.0, y1: T + 4.6 }, { kind: 'box', x: -59, z: -62, hx: 0.7, hz: 4.5, y0: T, y1: T + 8 },
+];
+const windbreak = { kind: 'box', x: 0, z: -84, hx: 56, hz: 4, y0: -14, y1: 30 };
+function wireFor(list) {
+  const g = new THREE.Group(), m = new THREE.LineBasicMaterial({ color: 0x39ff88, depthTest: false, transparent: true, opacity: 0.85 });
+  for (const s of list) {
+    const geo = s.kind === 'box' ? new THREE.BoxGeometry(s.hx * 2, s.y1 - s.y0, s.hz * 2) : new THREE.CylinderGeometry(s.r, s.r, s.y1 - s.y0, 20);
+    const l = new THREE.LineSegments(new THREE.EdgesGeometry(geo), m); l.position.set(s.x, (s.y0 + s.y1) / 2, s.z); l.renderOrder = 20; g.add(l);
+  }
+  for (const [x, z] of [[-42, -22], [42, -22], [-42, 24], [42, 24], [-39, -72], [39, -72], [-36, 68], [36, 68]]) {
+    const r = new THREE.Mesh(new THREE.RingGeometry(2.4, 2.8, 24), new THREE.MeshBasicMaterial({ color: 0xffd23f, side: THREE.DoubleSide, depthTest: false }));
+    r.rotation.x = -Math.PI / 2; r.position.set(x, 0.6, z); r.renderOrder = 21; g.add(r);
+  }
+  scene.add(g); return g;
+}
+const wires = { base: wireFor(solids), beach: wireFor([windbreak]) };
+
+// ---- Gerald's surface: a flat slab, or the real height map from world.js
+const slab = new THREE.Mesh(new THREE.BoxGeometry(100, 1, 156), new THREE.MeshStandardMaterial({ color: 0xb9c6e4, roughness: 0.9 }));
+slab.position.set(0, -0.5, -2); slab.receiveShadow = slab.castShadow = true; scene.add(slab);
+const lump = new THREE.Group();
+for (const [x, y, z, sx, sy, sz] of [[0, 8, -56, 14, 15, 13], [0, 10, -10, 26, 17, 40], [0, 7, 40, 20, 9, 26]]) { const s = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshStandardMaterial({ color: 0xf2b48f, roughness: 0.8 })); s.position.set(x, y, z); s.scale.set(sx, sy, sz); s.castShadow = s.receiveShadow = true; lump.add(s); }
+scene.add(lump);
+const goblin = new THREE.Mesh(new THREE.CapsuleGeometry(0.45, 0.4, 4, 10), new THREE.MeshStandardMaterial({ color: 0x6cc070 })); goblin.position.set(55, T + 0.65, -66); goblin.castShadow = true; scene.add(goblin);
+let realSurf = {};
+async function realSurface(map) {
+  if (realSurf[map]) return realSurf[map];
+  const { World, GRID } = await import('../shared/world.js');
+  const W = new World('back', map);
+  const nx = GRID.nx, nz = GRID.nz, geo = new THREE.PlaneGeometry(1, 1, nx - 1, nz - 1);
+  const P = geo.attributes.position;
+  for (let i = 0; i < P.count; i++) { const c = i % nx, r = Math.floor(i / nx); const x = GRID.x0 + c * GRID.cell, z = GRID.z0 + r * GRID.cell; P.setXYZ(i, x, W.vh(r * nx + c), z); }
+  geo.index.array.reverse(); geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: map === 'beach' ? 0xe0cb98 : map === 'camp' ? 0x6f7f52 : 0xe9d9b8, roughness: 0.9, side: THREE.DoubleSide }));
+  m.castShadow = m.receiveShadow = true; scene.add(m);
+  return (realSurf[map] = m);
+}
+const sea = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), new THREE.MeshStandardMaterial({ color: 0x1d5a8a, transparent: true, opacity: 0.55, roughness: 0.6, metalness: 0, depthWrite: false }));
+sea.rotation.x = -Math.PI / 2; sea.position.y = -1.5; scene.add(sea);
+
+// ---- the sets
+const sets = {};
+let quality = new URLSearchParams(location.search).get('q') || 'high';
+function buildAll() {
+  for (const k in sets) { scene.remove(sets[k].group); sets[k].dispose(); }
+  const t0 = performance.now();
+  for (const id of ['beach', 'camp', 'hammock']) { const t = performance.now(); sets[id] = buildSet(id, { THREE, T, FLOOR_Y, clockTex, quality }); sets[id].buildMs = performance.now() - t; scene.add(sets[id].group); }
+  console.log('built sets in', (performance.now() - t0).toFixed(0), 'ms');
+}
+buildAll();
+let cur = new URLSearchParams(location.search).get('set') || 'beach';
+
+// ---- critters cycling their states on the surface
+const critters = [buildCritter('gull'), buildCritter('raccoon')];
+critters.forEach(c => { c.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(c); });
+const PLAN = [['enter', 2.5], ['prowl', 5], ['crouch', 0.95], ['pounce', 0.45], ['prowl', 2.5], ['crouch', 0.95], ['pounce', 0.45], ['leave', 3]];
+const cyc = critters.map((g, i) => ({ g, i, t: i * 3, a: i * Math.PI }));
+function critterState(o, dt) {
+  o.t += dt;
+  const total = PLAN.reduce((s, p) => s + p[1], 0);
+  let tt = o.t % total, k = 0;
+  while (tt > PLAN[k][1]) { tt -= PLAN[k][1]; k++; }
+  const [state] = PLAN[k];
+  const sp = state === 'prowl' || state === 'enter' || state === 'leave' ? 8 : 0;
+  if (sp) o.a += dt * sp / 26;
+  const R = 26, x = (o.i ? -1 : 1) * Math.cos(o.a) * R * 0.8, z = Math.sin(o.a) * R + (o.i ? 10 : -20);
+  const yaw = Math.atan2(-Math.sin(o.a) * (o.i ? -1 : 1) * 0.8, Math.cos(o.a)) ;
+  return { x, y: o.i ? 0 : 12, z, yaw, state, t: tt, sp };
+}
+
+// ---- camera: presets + orbit
+const tgt = new THREE.Vector3(), cam = { yaw: 0, pitch: 0.3, dist: 40 };
+const VIEWS = {
+  'goblin R table': [[55, T + 1.3, -60], 2.3, 0.05, 4],
+  'goblin L table': [[-55, T + 1.3, -60], -2.3, 0.05, 4],
+  'goblin on belly': [[20, 3, -10], 2.2, 0.1, 5],
+  'goblin by feet': [[-30, 2, 60], 3.6, 0.02, 4],
+  'goblin edge out': [[46, 2, 20], 1.7, 0.08, 4],
+  'wide': [[0, 0, -10], Math.PI + 0.6, 0.5, 190],
+  'wide back': [[0, 0, -10], 0.6, 0.5, 190],
+  'wide low': [[0, -20, 0], 2.4, 0.12, 170],
+  'critters': [[0, 6, -5], 0.3, 0.35, 45],
+  'head end': [[0, 10, -70], 0, 0.35, 70],
+  'R table high': [[62, 6, -68], -2.2, 0.5, 38],
+  'L table high': [[-62, 4, -68], 2.2, 0.5, 34],
+  'side low': [[0, 2, -10], -Math.PI / 2, -0.05, 95],
+  'fire': [[85, -48, 5], -2.2, 0.35, 60],
+  'tent': [[0, -30, -150], Math.PI, 0.15, 120],
+  'look up': [[-28, 45, 2], 1.2, -0.95, 42],
+  'goblin head end': [[40, 9, -74], Math.PI + 0.3, 0.12, 8],
+};
+const Q = new URLSearchParams(location.search);
+if (Q.get('surf')) document.getElementById('surf').value = Q.get('surf');
+if (Q.get('q')) document.getElementById('q').value = Q.get('q');
+if (Q.get('wire') === '0') document.getElementById('wire').checked = false;
+if (Q.get('dark') === '1') document.getElementById('dark').checked = true;
+const SHOW = Q.get('show');   // 'gull' | 'raccoon': four states side by side
+const GRID = SHOW ? ['a', 'b', 'c', 'd'] : (Q.get('grid') || '').split(',').filter(Boolean);
+if (GRID.length || Q.get('panel') === '0') document.getElementById('panel').style.display = 'none';
+function setView(n) { const v = VIEWS[n]; if (!v) return; tgt.set(...v[0]); cam.yaw = v[1]; cam.pitch = v[2]; cam.dist = v[3]; }
+setView(new URLSearchParams(location.search).get('view') || 'wide');
+let drag = null;
+addEventListener('pointerdown', e => { if (e.target === renderer.domElement) drag = { x: e.clientX, y: e.clientY, b: e.button }; });
+addEventListener('pointerup', () => drag = null);
+addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('pointermove', e => {
+  if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
+  if (drag.b === 2) { const s = cam.dist * 0.002; tgt.x -= (Math.cos(cam.yaw) * dx) * s; tgt.z -= (-Math.sin(cam.yaw) * dx) * s; tgt.y += dy * s; }
+  else { cam.yaw -= dx * 0.006; cam.pitch = Math.max(-1.4, Math.min(1.5, cam.pitch + dy * 0.005)); }
+});
+addEventListener('wheel', e => { cam.dist = Math.max(1.5, Math.min(500, cam.dist * (1 + Math.sign(e.deltaY) * 0.1))); });
+
+// ---- UI
+const $ = id => document.getElementById(id);
+function buttons(el, names, onClick, isOn) {
+  el.innerHTML = '';
+  for (const n of names) { const b = document.createElement('button'); b.textContent = n; b.onclick = () => { onClick(n); refreshUI(); }; b.dataset.n = n; el.appendChild(b); }
+  el._isOn = isOn;
+}
+function refreshUI() { for (const el of [$('sets'), $('views')]) for (const b of el.children) b.classList.toggle('on', el._isOn(b.dataset.n)); }
+let curView = 'wide';
+buttons($('sets'), ['beach', 'camp', 'hammock'], n => { cur = n; applySet(); }, n => n === cur);
+buttons($('views'), Object.keys(VIEWS), n => { curView = n; setView(n); }, n => n === curView);
+$('q').onchange = e => { quality = e.target.value; buildAll(); applySet(); };
+$('surf').onchange = applySet; $('slab').onchange = applySet; $('wire').onchange = applySet; $('sea').onchange = applySet;
+async function applySet() {
+  for (const k in sets) sets[k].group.visible = k === cur;
+  const S = sets[cur];
+  scene.background = new THREE.Color(S.sky.background);
+  scene.fog.color.setHex(S.sky.fog); scene.fog.density = S.sky.fogDensity;
+  hemi.color.setHex(S.sky.hemiSky); hemi.groundColor.setHex(S.sky.hemiGround); hemi.intensity = S.sky.hemiIntensity;
+  moon.color.setHex(S.sky.moonColor); moon.intensity = S.sky.moonIntensity;
+  lamp.position.set(...S.light.pos); lamp.color.setHex(S.light.color); lamp.intensity = S.light.intensity;
+  extra.visible = !!S.extraLight;
+  if (S.extraLight) { extra.position.set(...S.extraLight.pos); extra.color.setHex(S.extraLight.color); }
+  wires.base.visible = $('wire').checked; wires.beach.visible = $('wire').checked && cur === 'beach';
+  sea.visible = $('sea').checked && cur === 'beach';
+  const real = $('surf').value === 'real';
+  slab.visible = lump.visible = $('slab').checked && !real;
+  for (const k in realSurf) realSurf[k].visible = false;
+  if (real && $('slab').checked) { try { (await realSurface(cur)).visible = true; } catch (e) { console.warn('real surface unavailable', e); slab.visible = lump.visible = true; } }
+  refreshUI();
+}
+applySet();
+
+// ---- loop
+let last = performance.now(), time = 0, fps = 0, frames = 0, ft = 0;
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now; time += dt;
+  const S = sets[cur];
+  const dark = $('dark').checked;
+  S.setDim(dark ? 0 : 1);
+  const fl = S.update(dt, time);
+  lamp.intensity += ((dark ? 0 : S.light.intensity * (S.lightFlicker || 1)) - lamp.intensity) * Math.min(1, dt * 3);
+  if (S.extraLight) extra.intensity = dark ? 0 : S.extraLight.intensity * (fl ?? 1);
+  hemi.intensity = dark ? 0.35 : S.sky.hemiIntensity; moon.intensity = dark ? 0.45 : S.sky.moonIntensity;
+  if (S.swing) S.swing.rotation.z = $('sway').checked ? Math.sin(time * 2 * Math.PI / 5.2) * 0.1 : 0;
+  sea.position.y = -1.5 + Math.sin(time * 0.6) * 0.3;
+  if (!SHOW) cyc.forEach(o => { const c = critterState(o, dt); o.g.visible = $('crit').checked; o.last = c; o.g.userData.sync(c, dt, time); });
+  // camera
+  const place = () => {
+    const cp = Math.cos(cam.pitch);
+    camera.position.set(tgt.x - Math.sin(cam.yaw) * cp * cam.dist, tgt.y + Math.sin(cam.pitch) * cam.dist, tgt.z - Math.cos(cam.yaw) * cp * cam.dist);
+    camera.lookAt(tgt);
+    moon.target.position.set(tgt.x, 0, tgt.z); moon.position.set(tgt.x + 120, 160, tgt.z + 30);
+  };
+  const w = innerWidth, h = innerHeight;
+  if (renderer.domElement.width !== Math.floor(w * renderer.getPixelRatio())) { renderer.setSize(w, h, false); }
+  if (SHOW) {
+    // pose one critter in four states (settled over a few simulated frames) and look at each from the front-left
+    const STATES = [['prowl', 1, 8], ['crouch', 0.5, 0], ['pounce', 0.22, 0], [SHOW === 'gull' ? 'enter' : 'leave', 0.6, 8]];
+    const g = critters[SHOW === 'gull' ? 0 : 1]; critters.forEach(c => c.visible = c === g);
+    renderer.setScissorTest(true);
+    STATES.forEach(([state, t, sp], i) => {
+      for (let k = 0; k < 60; k++) g.userData.sync({ x: 20, y: 0, z: 20, yaw: 0.8, state, t, sp }, 0.05, time + k * 0.05);
+      tgt.set(20, SHOW === 'gull' ? g.position.y : 6, 20); cam.yaw = 0.8 + Math.PI + 0.7; cam.pitch = 0.18; cam.dist = SHOW === 'gull' ? 34 : 28;
+      place();
+      const x = (i % 2) * w / 2, y = (i < 2 ? 1 : 0) * h / 2;
+      renderer.setViewport(x, y, w / 2, h / 2); renderer.setScissor(x, y, w / 2, h / 2);
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      renderer.render(scene, camera);
+    });
+    renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h);
+  } else if (GRID.length) {
+    // ?grid=viewA,viewB,viewC,viewD renders four presets in quadrants
+    renderer.setScissorTest(true);
+    GRID.forEach((n, i) => {
+      if (!VIEWS[n]) return;
+      setView(n); place();
+      const x = (i % 2) * w / 2, y = (i < 2 ? 1 : 0) * h / 2;
+      renderer.setViewport(x, y, w / 2, h / 2); renderer.setScissor(x, y, w / 2, h / 2);
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      renderer.render(scene, camera);
+    });
+    renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h);
+  } else {
+    place();
+    camera.aspect = w / h; camera.updateProjectionMatrix();
+    renderer.render(scene, camera);
+  }
+  frames++; ft += dt; if (ft > 0.5) { fps = frames / ft; frames = 0; ft = 0; }
+  const info = renderer.info.render;
+  let meshes = 0; S.group.traverse(o => { if (o.isMesh || o.isPoints || o.isSprite) meshes++; });
+  $('stats').textContent = `${cur}  ${quality}  built in ${S.buildMs.toFixed(0)} ms\nframe: ${info.calls} calls, ${(info.triangles / 1000).toFixed(1)}k tris (incl. shadow pass)\nset objects: ${meshes}   fps ${fps.toFixed(0)}\ncritters: ${cyc.map(o => o.last ? o.last.state : '').join(' / ')}`;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// for poking at from the console
+window.__dbg = { THREE, scene, renderer, camera, sets, setView, VIEWS, cam, tgt,
+  select(id) { cur = id; return applySet(); },
+  /** draw calls and triangles for one set alone: total (with shadows) and main pass only */
+  measure(id) {
+    const vis = {}; for (const k in sets) { vis[k] = sets[k].group.visible; sets[k].group.visible = k === id; }
+    const hidden = [slab, lump, sea, wires.base, wires.beach, ...critters, goblin, ...Object.values(realSurf)]; const hv = hidden.map(o => o.visible); hidden.forEach(o => o.visible = false);
+    renderer.render(scene, camera); const a = { calls: renderer.info.render.calls, tris: renderer.info.render.triangles };
+    renderer.shadowMap.enabled = false; renderer.render(scene, camera); const b = { calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; renderer.shadowMap.enabled = true;
+    hidden.forEach((o, i) => o.visible = hv[i]); for (const k in sets) sets[k].group.visible = vis[k];
+    let objs = 0, tris = 0; sets[id].group.traverse(o => { if (o.isMesh || o.isPoints) { objs++; const g = o.geometry; const n = g.index ? g.index.count / 3 : g.attributes.position.count / 3; tris += o.isInstancedMesh ? n * o.count : o.isPoints ? 0 : n; } });
+    return { withShadows: a, mainPass: b, objects: objs, sceneTris: Math.round(tris) };
+  },
+};
+</script>
+</body>
+</html>

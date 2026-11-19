@@ -2,7 +2,8 @@
 // The game hands render() a "view" each frame (the latest state, already interpolated); this file only draws it.
 import * as THREE from '../vendor/three.min.js';
 import { GRID, BED, MAT, SPOTS, SEATS, STASH_R, NIGHTSTAND_TOP, FLOOR_Y } from '../shared/world.js';
-import { LOOT, LOOT_IDS, PHYS } from '../shared/data.js';
+import { LOOT, LOOT_IDS, PHYS, MAPS } from '../shared/data.js';
+import { buildSet, buildCritter } from './scenery.js';
 import { ST, LS, aimDir, throwSpeed, swingPower } from '../shared/sim.js';
 import { Goblin } from './goblin.js';
 import { buildLoot } from './lootmesh.js';
@@ -14,8 +15,43 @@ const tmpV = new THREE.Vector3(), tmpC = new THREE.Color(), tmpM = new THREE.Mat
 // ---------------------------------------------------------------- colours of Gerald and the bed
 const BLANKET = [0xd9534f, 0xf0ad4e, 0x6cc070, 0x5bc0de, 0x9b6bd0, 0xf7dfa0, 0xe57fb0];
 function hash(a, b) { const s = Math.sin(a * 91.7 + b * 47.3) * 43758.5453; return s - Math.floor(s); }
-function geraldColor(m, x, z, h) {
+// the beach towel, the camp cot, the hammock: [stripe colours] and how they run
+const TOWEL = [0xff6b6b, 0xfff6e6, 0x2ec4b6, 0xffd166, 0xfff6e6, 0x3a86ff];
+const TOWEL2 = [0xffd166, 0xef476f, 0x06d6a0, 0x118ab2];
+const HAMMOCK = [0xe85d5d, 0xf2a541, 0xf6d860, 0x7cc47f, 0x5aa9e6, 0xa78bd6];
+const band = (list, v, w) => list[((Math.floor((v + 400) / w) % list.length) + list.length) % list.length];
+function awayColor(map, m, x, z, h) {
+  if (map === 'beach') switch (m) {
+    case MAT.sheet: return Math.abs(x) > 29.5 || z < -77.5 || z > 69 ? 0xfff6e6 : band(TOWEL, x, 5.2);
+    case MAT.sand: { const wet = Math.min(1, Math.max(0, -h / 3)); tmpC.setHex(0xe3bf7e).lerp(new THREE.Color(0x8f7346), wet); return tmpC.getHex(); }
+    case MAT.pillow: return band([0x3a86ff, 0xfff6e6], z, 2.2);
+    case MAT.blanket: return band(TOWEL2, z, 6.5);
+    case MAT.shirt: { const f = hash(Math.floor((x + 200) / 3.4), Math.floor((z + 200) / 3.4)); const fx = ((x + 200) / 3.4) % 1 - 0.5, fz = ((z + 200) / 3.4) % 1 - 0.5; return f > 0.55 && fx * fx + fz * fz < 0.09 ? (f > 0.8 ? 0xffd166 : 0xff7aa8) : 0x1f9e8f; }
+    case MAT.pocket: return 0x177a6e;
+    case MAT.sock: return h > 17 ? 0x3a86ff : 0xfafaf4;
+  }
+  if (map === 'camp') switch (m) {
+    case MAT.sheet: return Math.abs(x) > 47 ? 0x5a4632 : (Math.floor((x + 200) / 1.6) + Math.floor((z + 200) / 1.6)) % 2 ? 0x6f7d4a : 0x66733f;
+    case MAT.pillow: return (Math.floor((x + 200) / 4) + Math.floor((z + 200) / 4)) % 2 ? 0xb5523b : 0xd9a066;
+    case MAT.blanket: { const zz = ((z + 200) % 6); if (z < BED.z0 + 84) return 0xf08a24; return zz < 0.45 ? 0x1e3a66 : 0x2f5d9e; }
+    case MAT.shirt: { const a = Math.floor((x + 200) / 3) % 3 === 0, b = Math.floor((z + 200) / 3) % 3 === 0; return a && b ? 0x5a1717 : a || b ? 0x8e2a2a : 0xc0433c; }
+    case MAT.pocket: return 0x8f2c2c;
+    case MAT.sock: return h > 17 ? 0x4f7a4a : 0xcfc3ae;
+  }
+  if (map === 'hammock') switch (m) {
+    case MAT.sheet: return band(HAMMOCK, x, 4.6);
+    case MAT.pillow: return Math.floor((z + 200) / 2.5) % 2 ? 0xf2e6c8 : 0xf0c0c8;
+    case MAT.blanket: return Math.floor((z + 200) / 4) % 4 === 0 ? 0xd96c6c : 0xefe3cf;
+    case MAT.shirt: return Math.floor((z + 200) / 2.2) % 2 ? 0xb79ad9 : 0xeae0fa;
+    case MAT.pocket: return 0x9c7fc4;
+    case MAT.sock: return h > 17 ? 0x6cc070 : 0xf6d860;
+  }
+  return -1;
+}
+function geraldColor(m, x, z, h, map = 'bedroom') {
+  if (map !== 'bedroom') { const c = awayColor(map, m, x, z, h); if (c >= 0) return c; }
   switch (m) {
+    case MAT.sand: return 0xe9d5a3;
     case MAT.sheet: {
       const gx = Math.round(x / 3.2) * 3.2, gz = Math.round(z / 3.2) * 3.2;
       const dot = (Math.round(x / 3.2) + Math.round(z / 3.2)) % 2 === 0 && Math.hypot(x - gx, z - gz) < 0.75;
@@ -216,16 +252,15 @@ export class Renderer {
     const col = new Float32Array(N * 3);
     for (let i = 0; i < N; i++) {
       const x = GRID.x0 + (i % NX) * GRID.cell, z = GRID.z0 + Math.floor(i / NX) * GRID.cell;
-      tmpC.setHex(geraldColor(P.mat[i], x, z, P.full[i]));
+      tmpC.setHex(geraldColor(P.mat[i], x, z, P.full[i], P.map));
       col[i * 3] = tmpC.r; col[i * 3 + 1] = tmpC.g; col[i * 3 + 2] = tmpC.b;
     }
     return (P._colors = col);
   }
   syncPoses(force) {
     const W = this.world, g = this.gerald.geometry, at = g.attributes;
-    const key = W.A.name + '>' + W.B.name;
-    if (!force && key === this._poseKey) return;
-    this._poseKey = key;
+    if (!force && W.A === this._pA && W.B === this._pB) return;
+    this._pA = W.A; this._pB = W.B;
     at.hAF.array.set(W.A.full); at.hAB.array.set(W.A.base); at.sideA.array.set(W.A.side);
     at.hBF.array.set(W.B.full);
     at.normal.array.set(this.poseNormals(W.A)); at.normalB.array.set(this.poseNormals(W.B));
@@ -281,7 +316,8 @@ export class Renderer {
 
   // ---------------------------------------------------------------- the bedroom
   buildRoom() {
-    const s = this.scene;
+    const s = new THREE.Group();
+    this.scene.add(s);
     const m = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.8, ...o });
     const add = (geo, mat, x, y, z, shadow = true) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); o.castShadow = shadow; o.receiveShadow = true; s.add(o); return o; };
     const T = NIGHTSTAND_TOP;
@@ -365,6 +401,47 @@ export class Renderer {
     add(new THREE.BoxGeometry(60, 70, 30), m(0x5a3a26), -110, FLOOR_Y + 35, 150, false);
     add(new THREE.BoxGeometry(2, 140, 60), m(0x4a3020), -158.5, FLOOR_Y + 70, 140, false);
     add(new THREE.PlaneGeometry(56, 1.6), new THREE.MeshBasicMaterial({ color: 0xffd9a0 }), -157, FLOOR_Y + 0.9, 140, false).rotation.y = Math.PI / 2;
+    this.sets = {
+      bedroom: {
+        group: s, swing: null, glows: [shade.material], extraLight: null, lightFlicker: 1,
+        light: { pos: [68, T + 19, -74], color: 0xffb36b, intensity: 2600 },
+        sky: { background: 0x0b0d1c, fog: 0x0d1024, fogDensity: 0.0062, hemiSky: 0x7f8fd0, hemiGround: 0x2a1e2e, hemiIntensity: 1.15, moonColor: 0xb4c6ff, moonIntensity: 1.6 },
+        update() {}, setDim(k) { shade.material.emissiveIntensity = 0.9 * k; },
+      },
+    };
+    this.mapId = null;
+    this.critters = {};
+    // the sea around the beach (it rises with the tide)
+    this.sea = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600, 1, 1), new THREE.MeshStandardMaterial({ color: 0x24639e, transparent: true, opacity: 0.66, roughness: 0.15, metalness: 0.25, depthWrite: false }));
+    this.sea.rotation.x = -Math.PI / 2; this.sea.visible = false; this.sea.renderOrder = 2;
+    this.scene.add(this.sea);
+    this.setMap('bedroom');
+  }
+  /** switch the scenery, lights and Gerald's outfit to another map (built the first time it's needed) */
+  setMap(id) {
+    if (!MAPS[id]) id = 'bedroom';
+    if (id === this.mapId) return;
+    if (!this.sets[id]) {
+      try {
+        const set = buildSet(id, { THREE, T: NIGHTSTAND_TOP, FLOOR_Y, clockTex: this.clockTex, quality: this.quality, colors: { cot: 0x6f7d4a, hammock: HAMMOCK } });
+        this.scene.add(set.group);
+        this.sets[id] = set;
+      } catch (e) { console.error('scenery', id, e); id = 'bedroom'; }
+    }
+    this.mapId = id;
+    for (const [k, st] of Object.entries(this.sets)) st.group.visible = k === id;
+    const S = this.set = this.sets[id], sky = S.sky;
+    this.scene.background.setHex(sky.background);
+    this.scene.fog.color.setHex(sky.fog); this.fogBase = sky.fogDensity;
+    this.hemi.color.setHex(sky.hemiSky); this.hemi.groundColor.setHex(sky.hemiGround); this.hemiBase = sky.hemiIntensity;
+    this.moon.color.setHex(sky.moonColor); this.moonBase = sky.moonIntensity;
+    this.lamp.position.set(...S.light.pos); this.lamp.color.setHex(S.light.color); this.lampBase = S.light.intensity; this.lampK = this.lampK ?? S.light.intensity;
+    if (S.extraLight) {
+      if (!this.extraLight) { this.extraLight = new THREE.PointLight(0xff9040, 0, 0, 1.75); this.scene.add(this.extraLight); }
+      this.extraLight.position.set(...S.extraLight.pos); this.extraLight.color.setHex(S.extraLight.color); this.extraBase = S.extraLight.intensity;
+    } else this.extraBase = 0;
+    if (this.extraLight) this.extraLight.visible = this.extraBase > 0;
+    this.sea.visible = id === 'beach';
   }
   drawClock(time, ampm, alarm = false) {
     const g = this.clockCanvas.getContext('2d');
@@ -516,6 +593,7 @@ export class Renderer {
     this.time += dt;
     const W = view.world, U = this.uniforms;
     if (W !== this.world) this.setWorld(W);
+    this.setMap(view.map || 'bedroom');
     this.syncPoses(false);
     U.uMorph.value = W.morph; U.uBreath.value = W.breath; U.uMouth.value = W.mouth; U.uLiftL.value = W.liftL; U.uLiftR.value = W.liftR; U.uTime.value = this.time;
     for (let i = 0; i < 8; i++) { const b = W.bumps[i]; if (b) U.uBumps.value[i].set(b.x, b.z, b.r, b.a); else U.uBumps.value[i].set(0, 0, 0, 0); }
@@ -525,12 +603,16 @@ export class Renderer {
     for (const sp of view.spots || []) { if (si < 4) U.uSpots.value[si++].set(sp.x, sp.z, sp.r, sp.a); }
     for (; si < 4; si++) U.uSpots.value[si].set(0, 0, 0, 0);
     // dream lighting
-    const dark = view.dream === 'dark';
-    this.lamp.intensity += ((dark ? 0 : 2600) - this.lamp.intensity) * Math.min(1, dt * 3);
-    this.lampShade.material.emissiveIntensity = dark ? 0 : 0.9;
-    this.hemi.intensity = dark ? 0.35 : 1.15;
-    this.moon.intensity = dark ? 0.45 : 1.6;
-    this.scene.fog.density = dark ? 0.012 : 0.0062;
+    const dark = view.dream === 'dark', S = this.set;
+    const fire = S.update(dt, this.time);
+    this.lampK += ((dark ? 0 : this.lampBase) - this.lampK) * Math.min(1, dt * 3);
+    this.lamp.intensity = this.lampK * (S.lightFlicker || 1);
+    if (this.extraLight && this.extraBase) this.extraLight.intensity = this.extraBase * (dark ? 0.35 : 1) * (typeof fire === 'number' ? fire : 1);
+    if (this._dim !== dark) { this._dim = dark; S.setDim(dark ? 0 : 1); }
+    this.hemi.intensity = dark ? 0.35 : this.hemiBase;
+    this.moon.intensity = dark ? 0.45 : this.moonBase;
+    this.scene.fog.density = dark ? this.fogBase * 1.9 : this.fogBase;
+    if (S.swing) S.swing.rotation.z = view.sway || 0;
     this.syncPlayers(view, dt);
     this.syncLoot(view, dt);
     this.syncProps(view, dt);
@@ -539,7 +621,8 @@ export class Renderer {
     this.syncEyes(view, dt);
     this.syncCat(view.cat, dt);
     // water
-    this.water.visible = view.water > 0;
+    this.water.visible = view.water > 0 && this.mapId !== 'beach';
+    if (this.sea.visible) { this.sea.position.y = view.water ?? -3; this.sea.material.opacity = 0.64 + Math.sin(this.time * 0.9) * 0.04; }
     if (this.water.visible) { this.water.position.y = view.water; this.water.material.opacity = 0.5 + Math.sin(this.time * 1.3) * 0.04; }
     // Zzz from his mouth while he sleeps
     for (const z of this.zzz) {
@@ -681,6 +764,16 @@ export class Renderer {
     });
   }
   syncCat(c, dt) {
+    const kind = (MAPS[this.mapId] || MAPS.bedroom).critter;
+    for (const [k, m] of Object.entries(this.critters)) if (!c || k !== kind) m.visible = false;
+    if (c && kind !== 'cat') {
+      let m = this.critters[kind];
+      if (!m) { m = this.critters[kind] = buildCritter(kind); this.scene.add(m); }
+      if (this.cat) this.cat.visible = false;
+      m.visible = true;
+      m.userData.sync(c, dt, this.time);
+      return;
+    }
     if (!c) { if (this.cat) this.cat.visible = false; return; }
     if (!this.cat) { this.cat = buildCat(); this.scene.add(this.cat); }
     const m = this.cat, u = m.userData;

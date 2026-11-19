@@ -81,6 +81,29 @@ export const REGIONS = [
 ];
 export const REGION = Object.fromEntries(REGIONS.map((r, i) => [r.id, i]));
 
+// ---------------------------------------------------------------- maps: where Gerald fell asleep tonight
+// Every night he's somewhere new. The shapes live in world.js; the scenery in js/scenery.js.
+// regions: names that differ from the bedroom's. jackpots: which jackpot sits on the side table / by his right hand.
+export const MAPS = {
+  bedroom: { name: "Gerald's Bed", icon: '🛏️', line: 'Home, sweet home. Mind the nightstands.', critter: 'cat', out: 'You fell off the bed! Climbing back up...', fell: 'fell off the bed', knocked: 'knocked {v} off the bed',
+    jackpots: { stand: 'globe', hand: 'remote' }, regions: {} },
+  beach: { name: 'Beach Snooze', icon: '🏖️', line: "He dozed off on the beach and never went home. The tide is coming in...", critter: 'gull', out: 'Washed out to sea! Paddling back...', fell: 'got washed out to sea', knocked: 'knocked {v} into the sea',
+    jackpots: { stand: 'conch', hand: 'pail' }, regions: { bed: 'The Beach', pillow: 'Towel Roll', blanket: 'Towel Dunes', stand: 'Rock' }, tide: true },
+  camp: { name: 'Campout', icon: '🏕️', line: 'Sleeping under the stars on a camping cot. Bandit the raccoon lives here...', critter: 'raccoon', out: 'You fell off the cot! Climbing back up...', fell: 'fell off the cot', knocked: 'knocked {v} off the cot',
+    jackpots: { stand: 'compass', hand: 'harmonica' }, regions: { bed: 'The Cot', pillow: 'Camp Pillow', blanket: 'Sleeping Bag Hills', stand: 'Cooler' } },
+  hammock: { name: 'Garden Hammock', icon: '🌳', line: 'Napping in the garden hammock. It sways... hold on to your loot!', critter: 'cat', out: 'You fell out of the hammock! Climbing back up...', fell: 'fell out of the hammock', knocked: 'knocked {v} out of the hammock',
+    jackpots: { stand: 'lemonade', hand: 'gnome' }, regions: { bed: 'The Hammock', blanket: 'Blanket Hills', stand: 'Garden Table' }, sway: true },
+};
+export const MAP_IDS = Object.keys(MAPS);
+/** a region's name on a map */
+export function regionName(ri, map) { const r = REGIONS[ri]; if (!r) return ''; return (MAPS[map] && MAPS[map].regions[r.id]) || r.name; }
+// the animal that visits each map (they all chase movement)
+export const CRITTERS = {
+  cat: { name: 'Mr. Biscuits', emoji: '🐈', title: 'MR. BISCUITS IS HERE!', sub: 'Cats chase movement. Hold still...', call: 'cat_meow', warn: 'cat_hiss', arrive: 'jumped up next to Gerald', hit: 'batted {v} across the bed', leave: 'got bored and left' },
+  gull: { name: 'Captain Squawk', emoji: '🐦', title: 'CAPTAIN SQUAWK IS HERE!', sub: 'Seagulls dive at anything that moves. Hold still...', call: 'gull_call', warn: 'gull_screech', arrive: 'swooped in from the sea', hit: 'dive-bombed {v}', leave: 'flew off to look for chips' },
+  raccoon: { name: 'Bandit', emoji: '🦝', title: 'BANDIT THE RACCOON IS HERE!', sub: 'Raccoons pounce on anything that moves. Hold still...', call: 'raccoon_chitter', warn: 'raccoon_hiss', arrive: 'climbed onto the cot', hit: 'bowled {v} over', leave: 'wandered off to look for snacks' },
+};
+
 // ---------------------------------------------------------------- loot
 // value [min,max], mass (heavier = slower carry), r radius, fragile (loses value on hard hits, can break),
 // floaty (drifts, low gravity), sticky (doesn't bounce), regions: where it spawns (weight).
@@ -105,6 +128,19 @@ export const LOOT = {
   remote:  { name: 'TV Remote',          value: [160, 200], mass: 3.4, r: 0.95, color: 0x2d2d33, regions: {}, jackpot: true },
   golfball:{ name: 'Golf Ball',          value: [28, 34],   mass: 0.7, r: 0.40, color: 0xffffff, bouncy: true, regions: { bed: 3, blanket: 3, chest: 2, belly: 2, pillow: 1 } },
   pea:     { name: 'Golden Pea',         value: [120, 140], mass: 0.6, r: 0.42, color: 0xfff25a, glow: 0x776600, regions: {} },
+  // map loot: only spawns on the maps listed (jackpots are placed by the map, see MAPS)
+  shell:   { name: 'Seashell',           value: [20, 34],   mass: 0.6, r: 0.50, color: 0xffd9c7, maps: ['beach'], regions: { bed: 5, blanket: 3, pillow: 1, sock: 1 } },
+  seaglass:{ name: 'Sea Glass',          value: [36, 52],   mass: 0.5, r: 0.42, color: 0x7fe0c0, glow: 0x0f4a3a, maps: ['beach'], regions: { bed: 3, belly: 1, chest: 1, blanket: 1 } },
+  conch:   { name: 'Golden Conch',       value: [200, 250], mass: 3.2, r: 0.95, color: 0xffcf6a, glow: 0x553300, maps: ['beach'], regions: {}, jackpot: true },
+  pail:    { name: 'Toy Bucket & Spade', value: [160, 200], mass: 3.0, r: 1.00, color: 0x3fa9f5, maps: ['beach'], regions: {}, jackpot: true },
+  marshmallow: { name: 'Marshmallow',    value: [14, 24],   mass: 0.4, r: 0.45, color: 0xfff7f0, bouncy: true, maps: ['camp'], regions: { bed: 3, blanket: 4, belly: 1, chest: 1, pillow: 1 } },
+  acorn:   { name: 'Acorn',              value: [20, 32],   mass: 0.7, r: 0.42, color: 0xa86a32, maps: ['camp', 'hammock'], regions: { bed: 3, blanket: 2, hair: 1, beard: 1 } },
+  compass: { name: 'Brass Compass',      value: [200, 240], mass: 2.8, r: 0.85, color: 0xd9a441, glow: 0x443300, maps: ['camp'], regions: {}, jackpot: true },
+  harmonica: { name: 'Harmonica',        value: [160, 200], mass: 2.6, r: 0.95, color: 0xc8ccd6, maps: ['camp'], regions: {}, jackpot: true, squeaky: true },
+  strawberry: { name: 'Strawberry',      value: [22, 34],   mass: 0.6, r: 0.45, color: 0xff4a5a, maps: ['hammock'], regions: { bed: 3, blanket: 3, belly: 2, chest: 1 } },
+  petal:   { name: 'Rose Petal',         value: [16, 26],   mass: 0.15, r: 0.50, color: 0xff8fb8, floaty: true, maps: ['hammock'], regions: { bed: 2, blanket: 2, chest: 1, belly: 1, hair: 1, cheek: 1 } },
+  lemonade:{ name: 'Glass of Lemonade',  value: [170, 210], mass: 3.0, r: 0.95, color: 0xfff27a, glow: 0x444400, fragile: true, maps: ['hammock'], regions: {}, jackpot: true },
+  gnome:   { name: 'Tiny Garden Gnome',  value: [180, 220], mass: 3.4, r: 1.00, color: 0xe0413a, maps: ['hammock'], regions: {}, jackpot: true },
 };
 export const LOOT_IDS = Object.keys(LOOT);
 export const LOOT_INDEX = Object.fromEntries(LOOT_IDS.map((k, i) => [k, i]));
@@ -171,7 +207,7 @@ export const MODS = [
   { id: 'rollovers', group: 'Gerald', name: 'Roll-overs', type: 'bool', def: true },
   { id: 'wakeups', group: 'Gerald', name: 'Wake-ups (FREEZE!)', type: 'bool', def: true },
   { id: 'snoreWind', group: 'Gerald', name: 'Snore wind', type: 'bool', def: true },
-  { id: 'cat', group: 'Gerald', name: 'Mr. Biscuits the cat', type: 'bool', def: true },
+  { id: 'cat', group: 'Gerald', name: 'Critters (Mr. Biscuits & friends)', type: 'bool', def: true },
   // chaos
   { id: 'dreams', group: 'Chaos', name: 'Dream twist each night', type: 'bool', def: true },
   { id: 'gravity', group: 'Chaos', name: 'Gravity', type: 'choice', options: [0.45, 0.7, 1, 1.4], labels: ['Moon', 'Floaty', 'Normal', 'Heavy'], def: 1 },

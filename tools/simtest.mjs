@@ -13,23 +13,25 @@ for (let gi = 0; gi < games; gi++) {
   sim.botInput = botThink;
   sim.startMatch();
   const counts = {};
-  let steps = 0, peak = 0, lastPhase = '';
+  let steps = 0, peak = 0, lastPhase = '', outs = 0, nightWorst = 0;
   const t0 = performance.now();
   while (sim.phase !== PH.LOBBY && steps < 60 * 60 * 30) {
     const a = performance.now();
     sim.step(1 / 60);
     const ms = performance.now() - a;
     if (ms > worstStep) worstStep = ms;
+    if (sim.phase === PH.NIGHT && ms > nightWorst) nightWorst = ms;
     steps++;
     peak = Math.max(peak, sim.g.noise);
     for (const e of sim.takeEvents()) {
       const k = e.e === 'sfx' ? 'sfx:' + e.n : e.e;
       counts[k] = (counts[k] || 0) + 1;
+      if (e.e === 'out') outs++;
       if (e.e === 'final') console.log('  final:', e.ranks.map(r => `${sim.players[r.seat].name.split(' ')[0]} ${r.cash}`).join(', '));
       if (e.e === 'results') {
-        console.log(`  night ${e.night} [${sim.dream}] peak noise ${peak.toFixed(0)}  banked: ${e.rows.map(r => `${sim.players[r.seat].name.split(' ')[0]} $${r.tonight}`).join(', ')}`);
+        console.log(`  night ${e.night} ${sim.map} [${sim.dream}] outs ${outs} worst night step ${nightWorst.toFixed(1)}ms peak noise ${peak.toFixed(0)}  banked: ${e.rows.map(r => `${sim.players[r.seat].name.split(' ')[0]} $${r.tonight}`).join(', ')}`);
         console.log(`    awards: ${e.awards.map(a => `${a.id}=${sim.players[a.seat].name.split(' ')[0]}`).join(' ')}`);
-        peak = 0;
+        peak = 0; outs = 0; nightWorst = 0;
       }
     }
     if (sim.phase !== lastPhase) lastPhase = sim.phase;

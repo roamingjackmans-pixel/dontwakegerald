@@ -9,6 +9,9 @@
 // morphs the height map from one pose to another. Breathing lifts his chest, his lips part when he snores, his
 // hands can lift off the bed to swat, and twitches are temporary bumps. heightAt() includes all of that, exactly the
 // same way the renderer's shader does, so goblins stand where they appear to stand.
+//
+// Maps: every night he falls asleep somewhere else (his bed, a beach towel, a camping cot, a garden hammock). Only the
+// surface under him, its edges and the headboard change; his body, the side tables and every important spot stay put.
 import { REGION } from './data.js';
 
 export const BED = { x0: -50, x1: 50, z0: -80, z1: 76 };
@@ -24,7 +27,7 @@ export const FLOOR_Y = -55;
 export const NIGHTSTAND_TOP = 1.2;
 
 // what a vertex is made of (for the renderer's colours and for footstep sounds)
-export const MAT = { sheet: 0, pillow: 1, skin: 2, shirt: 3, blanket: 4, hair: 5, beard: 6, lips: 7, lid: 8, sock: 9, brow: 10, pocket: 11, button: 12, nose: 13, navel: 14, mouth: 15, toe: 16, ear: 17 };
+export const MAT = { sheet: 0, pillow: 1, skin: 2, shirt: 3, blanket: 4, hair: 5, beard: 6, lips: 7, lid: 8, sock: 9, brow: 10, pocket: 11, button: 12, nose: 13, navel: 14, mouth: 15, toe: 16, ear: 17, sand: 18 };
 
 // ---------------------------------------------------------------- shapes
 const NEG = -1e4;
@@ -173,13 +176,31 @@ function pillowH(x, z) {
   return 7.2 * Math.sqrt(1 - d ** 8) + 0.3 * vnoise(x * 0.3, z * 0.3);
 }
 const BLANKET_Z0 = 1.5, BLANKET_Z1 = 66;
+const clamp01 = v => (v < 0 ? 0 : v > 1 ? 1 : v);
+// how close (0..1) z is to the side tables, where every map lets you hop across
+const nearStands = z => clamp01(1 - (Math.abs(z + 68) - 12) / 5);
+// beach: rolling sand with his towel in the middle; the sides and the foot slope down into the sea
+function sandH(x, z) { return 0.55 * vnoise(x * 0.045 + 11, z * 0.045) + 0.25 * vnoise(x * 0.18, z * 0.18 + 4) - 0.15; }
+const onTowel = (x, z) => Math.abs(x) < 31 && z > -79 && z < 71;
+const BEACH_SLOPE = 5, BEACH_DEPTH = 10;
+const beachSlope = e => (e < BEACH_SLOPE ? Math.pow((BEACH_SLOPE - e) / BEACH_SLOPE, 1.6) * BEACH_DEPTH : 0);
+// camp: the cot's canvas, a little slack, with a rounded rail along each long side
+function cotRail(x) { const a = Math.abs(x); return a > 47 ? Math.sin(clamp01((a - 47) / 2.5) * Math.PI / 2) : 0; }
+// hammock: the fabric curls up along the long sides (less by the side tables, so you can still hop across)
+function hammockRim(x, z) { const a = Math.max(0, Math.abs(x) - 40); return a * a * 0.05 * (1 - 0.7 * nearStands(z)); }
+function baseSurface(map, x, z) {
+  if (map === 'beach') { const s = sandH(x, z); return onTowel(x, z) ? [s + 0.12, MAT.sheet] : [s, MAT.sand]; }
+  if (map === 'camp') return [sheetH(x, z) * 0.6 + cotRail(x), MAT.sheet];
+  if (map === 'hammock') return [sheetH(x, z) * 0.6 + hammockRim(x, z), MAT.sheet];
+  return [sheetH(x, z), MAT.sheet];
+}
 function blanketFold(x, z) { return 0.9 * vnoise(x * 0.08 + 3, z * 0.1) + 0.5 * Math.sin(x * 0.35 + z * 0.05) * vnoise(x * 0.05, z * 0.2); }
 
 // ---------------------------------------------------------------- building a pose's height map
 const cellX = i => X0 + (i % NX) * CELL;
 const cellZ = i => Z0 + Math.floor(i / NX) * CELL;
 
-function buildPose(name) {
+function buildPose(name, map = 'bedroom') {
   const pose = POSES[name]();
   const fixed = fixedParts();
   const body = [...fixed, ...pose.arms.flatMap(a => a.parts)];
@@ -199,7 +220,7 @@ function buildPose(name) {
     const z = Z0 + r * CELL, list = rows[r];
     for (let c = 0; c < NX; c++) {
       const i = r * NX + c, x = X0 + c * CELL;
-      let h = sheetH(x, z), m = MAT.sheet, reg = REGION.bed;
+      let [h, m] = baseSurface(map, x, z), reg = REGION.bed;
       const pil = pillowH(x, z);
       if (pil > h) { h = pil; m = MAT.pillow; reg = REGION.pillow; }
       // blanket over the legs, from the waist to the ankles
@@ -258,15 +279,22 @@ function buildPose(name) {
       else { full[i] = h; mat[i] = m; region[i] = reg; }
     }
   }
-  // mattress edge rounds off at the sides and the foot
+  // the edges: a mattress (or cot, or hammock) rounds off; the beach slopes down into the sea except by the rocks
   for (let i = 0; i < N; i++) {
     const x = cellX(i), z = cellZ(i);
-    const ex = Math.min(x - BED.x0, BED.x1 - x), ez = BED.z1 - z;
-    const e = Math.min(ex, ez);
-    if (e < 0.8) { const drop = (0.8 - e) * 1.2; full[i] -= drop; base[i] -= drop; }
+    const ex = Math.min(x - BED.x0, BED.x1 - x), ez = BED.z1 - z, eh = z - BED.z0;
+    let drop = 0;
+    if (map === 'beach') {
+      const k = nearStands(z);
+      drop = Math.max(beachSlope(ez), beachSlope(ex) * (1 - k), ex < 0.8 ? (0.8 - ex) * 1.2 * k : 0);
+    } else {
+      const e = Math.min(ex, ez, map === 'bedroom' ? 9 : eh);
+      if (e < 0.8) drop = (0.8 - e) * 1.2;
+    }
+    if (drop > 0) { full[i] -= drop; base[i] -= drop; }
   }
   const rest = { L: pose.arms[0].rest, R: pose.arms[1].rest };
-  return { name, full, base, side, region, mat, rest };
+  return { name, map, full, base, side, region, mat, rest };
 }
 
 // breathing (the chest and belly rise) and the mouth (the lips part when he snores) are masks shared by every pose
@@ -284,11 +312,15 @@ function buildMasks() {
 
 // ---------------------------------------------------------------- solids (not part of the height map)
 // box: {kind:'box', x, z, hx, hz, y0, y1}, cyl: {kind:'cyl', x, z, r, y0, y1}. tag names what it is.
-function buildSolids() {
+function buildSolids(map = 'bedroom') {
   const s = [];
   const T = NIGHTSTAND_TOP;
-  s.push({ kind: 'box', tag: 'headboard', x: 0, z: -84, hx: 56, hz: 4, y0: FLOOR_Y, y1: 40 });
-  s.push({ kind: 'box', tag: 'footboard', x: 0, z: 78, hx: 53, hz: 1.6, y0: FLOOR_Y, y1: 4.5 });
+  if (map === 'bedroom') {
+    s.push({ kind: 'box', tag: 'headboard', x: 0, z: -84, hx: 56, hz: 4, y0: FLOOR_Y, y1: 40 });
+    s.push({ kind: 'box', tag: 'footboard', x: 0, z: 78, hx: 53, hz: 1.6, y0: FLOOR_Y, y1: 4.5 });
+  }
+  // the beach has a striped windbreak behind his head; the cot and the hammock are open at both ends
+  if (map === 'beach') s.push({ kind: 'box', tag: 'windbreak', x: 0, z: -84, hx: 56, hz: 4, y0: -14, y1: 30 });
   for (const sx of [-1, 1]) {
     s.push({ kind: 'box', tag: 'nightstand', x: sx * 62.5, z: -68, hx: 11, hz: 12, y0: FLOOR_Y, y1: T });
   }
@@ -335,11 +367,12 @@ function buildStrands(pose) {
 
 // ---------------------------------------------------------------- the world
 export class World {
-  constructor(poseName = 'back') {
+  constructor(poseName = 'back', map = 'bedroom') {
     this.poses = {};
+    this.map = map;
     const m = buildMasks();
     this.breathM = m.breath; this.mouthM = m.mouth;
-    this.solids = buildSolids();
+    this.solids = buildSolids(map);
     this.extraSolids = [];   // moving ones (a swatting hand resting on the bed), set by the sim each step
     this.A = this.pose(poseName);
     this.B = this.A;
@@ -351,7 +384,19 @@ export class World {
     this._strandGrid = new Map();
     this.strands.forEach((s, k) => { if (!s[7]) return; const key = (Math.floor(s[0] / 2) * 1000) + Math.floor(s[2] / 2); if (!this._strandGrid.has(key)) this._strandGrid.set(key, []); this._strandGrid.get(key).push(k); });
   }
-  pose(name) { return this.poses[name] || (this.poses[name] = buildPose(name)); }
+  pose(name, map = this.map) { const k = map + ':' + name; return this.poses[k] || (this.poses[k] = buildPose(name, map)); }
+  /** move to another map, keeping the same pose */
+  setMap(map) {
+    if (map === this.map) return;
+    this.map = map;
+    this.solids = buildSolids(map);
+    this.A = this.B = this.pose(this.A.name); this.morph = 0;
+  }
+  /** build one missing pose of a map ahead of time (each takes a few dozen ms); true once they're all ready */
+  warm(map) {
+    for (const n of POSE_IDS) if (!this.poses[map + ':' + n]) { this.pose(n, map); return false; }
+    return true;
+  }
   setPose(name) { this.A = this.B = this.pose(name); this.morph = 0; }
   startMorph(name) { this.B = this.pose(name); this.morph = 0; }
   endMorph() { this.A = this.B; this.morph = 0; }

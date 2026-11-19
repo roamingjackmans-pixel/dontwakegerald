@@ -27,6 +27,18 @@ stamina), Super Battle Golf (charge-and-release golf swings, trick shots, sabota
 - **Awards** each night (Trick Shot, Bouncer, Pickpocket, Pack Mule, Loudmouth, Pancake, Butterfingers, THE WAKER).
 - **The final night** is worth 50% more. The winner ends up dancing on the tip of Gerald's nose.
 
+### Maps: he falls asleep somewhere new every night
+Every map once before any repeats, never the same one twice in a row. Each has its own loot, jackpots and visitor.
+- **Gerald's Bed**: the bedroom. Nightstands, a headboard, and Mr. Biscuits the cat.
+- **Beach Snooze**: a beach towel on a sand island. The **tide rises all night**; wade into deep water and you're washed
+  out to sea. Seashells, sea glass, a golden conch, and Captain Squawk the seagull, who dive-bombs anything that moves.
+- **Campout**: a camping cot in the woods by a campfire, open at both ends. Marshmallows, acorns, a brass compass, a
+  harmonica, and Bandit the raccoon.
+- **Garden Hammock**: strung between two trees, and it **sways**: loot slides and anything in the air drifts, more after
+  he rolls over, sneezes or wakes. Strawberries, rose petals, lemonade, a garden gnome.
+
+For testing, `?map=beach` (or `camp`, `hammock`, `bedroom`) keeps a game you host on one map.
+
 ### Gerald
 - A noise meter fills from running, landing, slapping, dropping heavy things, breaking fragile loot, kazoos... and
   your real voice (voice chat is proximity-based, and loud talking counts as noise). His face is touchy (eyelids x4),
@@ -36,7 +48,8 @@ stamina), Super Battle Golf (charge-and-release golf swings, trick shots, sabota
   pose (the whole map changes shape).
 - Fill it and he **WAKES UP**: freeze! Anyone who moves gets flicked off the bed, and whoever woke him pays a fine
   that's shared out to everyone else. Then he rolls over and goes back to sleep.
-- **Mr. Biscuits**, his cat, hops on the bed from night 2 and pounces on whoever is moving.
+- From night 2 a **critter** visits (Mr. Biscuits the cat, Captain Squawk the seagull or Bandit the raccoon, depending
+  on the map) and pounces on whoever is moving.
 - Climb to the tip of his nose and hold the interact button to **boop** it: he does a cute little sneeze that blows everyone (you included) off his face.
 
 ### Controls (keyboard + mouse or any controller)
@@ -99,13 +112,15 @@ player), make a room in one and join it from the other.
 ```
 public/                 the game (static files; this folder is what gets published)
   index.html, config.js, version.js, css/style.css, icons/
-  shared/  data.js (all numbers and content), world.js (Gerald's body as a height map, poses, solids),
+  shared/  data.js (all numbers and content, maps), world.js (Gerald's body as a height map, poses, map surfaces,
+           solids),
            sim.js (the whole game simulation), bots.js (computer goblins)
-  js/      main (start-up), game (a room session, netcode, prediction), render (Three.js scene), goblin, lootmesh,
+  js/      main (start-up), game (a room session, netcode, prediction), render (Three.js scene), scenery (beach, camp
+           and hammock sets, the seagull and raccoon), goblin, lootmesh,
            hud, ui (menus, lobby, shop), input (keyboard/mouse/controller), audio (all synthesized), cosmetics,
            net + relay (peer-to-peer rooms), friends (codes, presence, invites), voice (proximity chat), profile
   vendor/  three.min.js (r187, bundled), peerjs.min.js
-  dev/     audio-test.html, cosmetics-test.html
+  dev/     audio-test.html, cosmetics-test.html, loot-test.html, scenery-test.html
 tools/    serve.mjs, simtest.mjs, stamp-build.mjs
 ```
 

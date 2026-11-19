@@ -266,6 +266,8 @@ tr.me { background: rgba(255, 195, 90, .1); }
 .hud-intro { left: 50%; top: 18%; transform: translateX(-50%) scale(.9); text-align: center; opacity: 0; transition: opacity .4s, transform .4s; width: min(760px, 92vw); }
 .hud-intro.show { opacity: 1; transform: translateX(-50%) scale(1); }
 .hud-intro .n { font-family: 'Luckiest Guy', sans-serif; font-size: 3.4rem; color: var(--lamp); text-shadow: 0 5px 0 #6b3c12; letter-spacing: .04em; }
+.hud-intro .mp { font-family: 'Luckiest Guy', sans-serif; font-size: 2.2rem; color: #9fe8ff; text-shadow: 0 4px 0 #12406b; letter-spacing: .03em; }
+.hud-intro .mpl { color: #d6f4ff; font-weight: 600; margin: 2px 0 12px; font-size: 1.05rem; }
 .hud-intro .d { font-size: 1.8rem; color: #e2d0ff; }
 .hud-intro .dl { font-style: italic; color: #cfc6f0; font-weight: 500; margin: 6px 0; font-size: 1.15rem; }
 .hud-intro .dd { font-size: 1.1rem; background: rgba(13, 12, 32, .7); display: inline-block; padding: 6px 14px; border-radius: 12px; }
