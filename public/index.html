@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Don't Wake Gerald</title>
+<meta name="description" content="Rob a sleeping giant with your friends. A chaotic competitive 3D heist for 1-8 players in the browser. Don't wake Gerald.">
+<meta name="theme-color" content="#0d0f22">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Luckiest+Guy&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script src="config.js"></script>
+<script src="version.js"></script>
+<script src="vendor/peerjs.min.js"></script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud" style="display:none"></div>
+<div id="menu" class="menu"></div>
+<div id="overlay"></div>
+<div id="toast"></div>
+<div id="loading"><div class="logo">DON'T WAKE<br><span>GERALD</span></div><div class="dim">tiptoeing in...</div></div>
+<noscript><p style="color:#fff;padding:20px">Don't Wake Gerald needs JavaScript (and a computer that can draw 3D).</p></noscript>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

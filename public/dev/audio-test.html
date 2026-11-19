@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gerald Audio Test</title>
+<style>
+  :root { --bg: #17131f; --panel: #221c2e; --ink: #efe6d2; --dim: #a99db8; --btn: #34294a; --btnh: #4a3a68; --acc: #f2c35b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 14px; margin: 0 0 8px; color: var(--acc); text-transform: uppercase; letter-spacing: .08em; }
+  .note { color: var(--dim); margin: 0 0 16px; }
+  section { background: var(--panel); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 6px; }
+  button { background: var(--btn); color: var(--ink); border: 0; border-radius: 6px; padding: 6px 10px; font: inherit; cursor: pointer; }
+  button:hover { background: var(--btnh); }
+  button.on { background: var(--acc); color: #221c2e; }
+  label { display: flex; align-items: center; gap: 8px; margin: 4px 0; flex-wrap: wrap; }
+  label span.k { min-width: 110px; color: var(--dim); }
+  input[type=range] { width: 220px; max-width: 60vw; }
+  input[type=text] { background: #120f19; color: var(--ink); border: 1px solid var(--btn); border-radius: 6px; padding: 6px 8px; width: 320px; max-width: 70vw; font: inherit; }
+  .row { display: flex; gap: 24px; flex-wrap: wrap; }
+  #state { font-variant-numeric: tabular-nums; color: var(--dim); }
+  .bar { height: 8px; width: 220px; max-width: 60vw; background: #120f19; border-radius: 4px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--acc); }
+</style>
+</head>
+<body>
+<h1>Don't Wake Gerald: audio test bench</h1>
+<p class="note">The first click anywhere starts audio. Context: <span id="state">not started</span></p>
+
+<section>
+  <h2>Mix</h2>
+  <div class="row">
+    <div>
+      <label><span class="k">master</span><input id="vMaster" type="range" min="0" max="1" step="0.01" value="1"><output>1</output></label>
+      <label><span class="k">sfx</span><input id="vSfx" type="range" min="0" max="1" step="0.01" value="1"><output>1</output></label>
+      <label><span class="k">music</span><input id="vMusic" type="range" min="0" max="1" step="0.01" value="1"><output>1</output></label>
+    </div>
+    <div>
+      <label><span class="k">sfx vol</span><input id="sVol" type="range" min="0" max="1" step="0.01" value="1"><output>1</output></label>
+      <label><span class="k">sfx pan</span><input id="sPan" type="range" min="-1" max="1" step="0.01" value="0"><output>0</output></label>
+      <label><span class="k">sfx pitch</span><input id="sPitch" type="range" min="0.5" max="2" step="0.01" value="1"><output>1</output></label>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Sound effects</h2>
+  <div class="grid" id="sfxGrid"></div>
+  <p class="note" style="margin:8px 0 0">Spam tests: <button id="spam">100 x step in 1 s</button> <button id="flood">40 different sfx at once</button> <button id="combo">deposit combo (rising pitch)</button></p>
+</section>
+
+<section>
+  <h2>Music</h2>
+  <div class="grid" id="moodGrid"></div>
+  <label style="margin-top:8px"><span class="k">intensity</span><input id="intensity" type="range" min="0" max="1" step="0.01" value="0"><output>0</output></label>
+  <p class="note" style="margin:4px 0 0">Intensity matters most in <b>night</b> (ticks, then a heartbeat, then a sour tremolo, and the filter opens) and opens the filter in <b>tense</b>.</p>
+  <div class="grid" style="margin-top:8px"><button id="duck">duckMusic(0.6)</button><button id="duck2">duckMusic(1)</button></div>
+</section>
+
+<section>
+  <h2>Snore</h2>
+  <label><span class="k">level</span><input id="snoreLvl" type="range" min="0" max="1" step="0.01" value="0"><output>0</output></label>
+  <label><span class="k">breath period (s)</span><input id="snorePer" type="range" min="1.5" max="8" step="0.1" value="4.2"><output>4.2</output></label>
+  <label><span class="k">phase</span><span class="bar"><i id="phaseBar"></i></span><span id="phaseTxt">0.00</span></label>
+</section>
+
+<section>
+  <h2>Mumble</h2>
+  <div class="grid">
+    <input id="mumbleText" type="text" value="no mommy I don't want to go to giant school">
+    <button id="mumbleBtn">mumble</button>
+    <button data-m="where's my ring">"where's my ring"</button>
+    <button data-m="five more minutes">"five more minutes"</button>
+    <button data-m="mm">"mm"</button>
+  </div>
+</section>
+
+<script type="module">
+import { initAudio, audioCtx, setVolumes, sfx, startMusic, setIntensity, setSnore, mumble, duckMusic } from '../js/audio.js';
+
+const SFX = ['step', 'step_soft', 'jump', 'land', 'land_big', 'slap', 'swing_whoosh', 'club_hit', 'launch', 'grab', 'drop', 'throw',
+  'deposit', 'cash', 'break_glass', 'pop', 'squish', 'pancake', 'boing', 'yelp', 'steal', 'stash_alarm', 'buy', 'denied',
+  'ui_move', 'ui_click', 'ui_back', 'countdown', 'go', 'night_start', 'dawn', 'alarm_clock', 'tick', 'twitch', 'scratch',
+  'swat_warn', 'swat_impact', 'sneeze_in', 'sneeze', 'rollover', 'wake_roar', 'freeze', 'flick', 'grumble', 'chain', 'banana',
+  'kazoo', 'tiny_sneeze', 'pepper', 'feather', 'magnet', 'spray', 'trap_snap', 'coffee', 'lullaby', 'emote', 'trick_shot',
+  'level_up', 'unlock', 'join', 'leave', 'ready', 'error', 'splash', 'cat_meow', 'cat_hiss', 'wind'];
+const MOODS = ['menu', 'night', 'tense', 'awake', 'shop', 'results'];
+const $ = id => document.getElementById(id);
+
+// Start/resume audio on any interaction (capture phase so it runs before button handlers).
+document.addEventListener('pointerdown', initAudio, true);
+document.addEventListener('keydown', initAudio, true);
+setInterval(() => { const c = audioCtx(); $('state').textContent = c ? `${c.state}, ${c.sampleRate} Hz, t=${c.currentTime.toFixed(1)}s` : 'not started'; }, 250);
+
+// Sliders show their value next to them.
+for (const r of document.querySelectorAll('input[type=range]')) {
+  const out = r.parentElement.querySelector('output');
+  r.addEventListener('input', () => { if (out) out.textContent = r.value; });
+}
+const opts = () => ({ vol: +$('sVol').value, pan: +$('sPan').value, pitch: +$('sPitch').value });
+
+for (const name of SFX) {
+  const b = document.createElement('button');
+  b.textContent = name;
+  b.onclick = () => { initAudio(); sfx(name, opts()); };
+  $('sfxGrid').append(b);
+}
+$('spam').onclick = () => { initAudio(); for (let i = 0; i < 100; i++) setTimeout(() => sfx('step', opts()), i * 10); };
+$('flood').onclick = () => { initAudio(); for (const n of SFX.slice(0, 40)) sfx(n, { vol: 0.4 }); };
+$('combo').onclick = () => { initAudio(); for (let i = 0; i < 8; i++) setTimeout(() => sfx('deposit', { pitch: Math.pow(2, i / 12 * 2) }), i * 120); };
+
+const moodBtns = [];
+for (const m of [...MOODS, null]) {
+  const b = document.createElement('button');
+  b.textContent = m || 'stop';
+  b.onclick = () => { initAudio(); startMusic(m); for (const x of moodBtns) x.classList.toggle('on', x === b && m !== null); };
+  moodBtns.push(b);
+  $('moodGrid').append(b);
+}
+$('intensity').addEventListener('input', e => setIntensity(+e.target.value));
+$('duck').onclick = () => duckMusic(0.6);
+$('duck2').onclick = () => duckMusic(1);
+
+const applyVols = () => setVolumes({ master: +$('vMaster').value, sfx: +$('vSfx').value, music: +$('vMusic').value });
+for (const id of ['vMaster', 'vSfx', 'vMusic']) $(id).addEventListener('input', applyVols);
+
+// Snore: auto-cycling breath phase, setSnore every frame like the game will.
+let phase = 0, last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  phase = (phase + dt / +$('snorePer').value) % 1;
+  setSnore(+$('snoreLvl').value, phase);
+  $('phaseBar').style.width = (phase * 100).toFixed(1) + '%';
+  $('phaseTxt').textContent = phase.toFixed(2) + (phase < 0.5 ? ' inhale' : ' exhale');
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+$('mumbleBtn').onclick = () => { initAudio(); mumble($('mumbleText').value); };
+for (const b of document.querySelectorAll('[data-m]')) b.onclick = () => { initAudio(); mumble(b.dataset.m); };
+</script>
+</body>
+</html>

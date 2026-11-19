@@ -1,0 +1,16 @@
+{
+  "name": "dont-wake-gerald",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Don't Wake Gerald: a chaotic competitive 3D heist on the body of a sleeping giant. 1-8 players, peer-to-peer, plays in the browser.",
+  "type": "module",
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "test": "node tools/simtest.mjs"
+  },
+  "engines": { "node": ">=18" },
+  "devDependencies": {
+    "peerjs": "^1.5.5",
+    "three": "^0.187.0"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "Don't Wake Gerald",
+  "short_name": "Gerald",
+  "description": "Rob a sleeping giant with your friends. Quietly.",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0d0f22",
+  "theme_color": "#0d0f22",
+  "icons": [{ "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
