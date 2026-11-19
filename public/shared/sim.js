@@ -57,7 +57,6 @@ export class Sim {
     this.water = -5;
     this.final = null;
     this.awardsTonight = null;
-    this.chains = [];           // [[seatA, seatB]]
     this.g = this._newGerald();
     this.practice = !!opts.practice;
     for (const r of opts.roster || []) this.addPlayer(r);
@@ -138,7 +137,7 @@ export class Sim {
   // ---------------------------------------------------------------- phases
   enterLobby() {
     this.phase = PH.LOBBY; this.phaseT = 0; this.night = 0; this.dream = 'none'; this.dreamsUsed = [];
-    this.world.setPose('back'); this.g = this._newGerald(); this.water = -5; this.chains = []; this.cat = null;
+    this.world.setPose('back'); this.g = this._newGerald(); this.water = -5; this.cat = null;
     this.clearLoot(); this.props = [];
     for (const s of this.stashes) s.items = [];
     for (const p of this.list) { p.cash = this.mods.startCash; p.tonight = 0; p.stats = newStats(); p.totals = newStats(); p.inv = [null, null, null]; p.fx = {}; this.spawnAtStash(p); }
@@ -161,8 +160,9 @@ export class Sim {
     // tonight's dream
     let dream = 'none';
     if (this.mods.dreams && this.night > 1) {
-      const pool = this.dreamPool.filter(d => !this.dreamsUsed.includes(d) && DREAMS[d]);
-      const from = pool.length ? pool : this.dreamPool;
+      const valid = this.dreamPool.filter(d => DREAMS[d] && d !== 'none');
+      const pool = valid.filter(d => !this.dreamsUsed.includes(d));
+      const from = pool.length ? pool : valid;
       dream = from[Math.floor(this.rnd() * from.length)] || 'none';
       this.dreamsUsed.push(dream);
     }
@@ -173,7 +173,6 @@ export class Sim {
     if (dream === 'golf') nm.golf = Math.max(2, this.mods.golf * 2);
     if (dream === 'tiny') nm.size = Math.max(1.6, this.mods.size * 1.6);
     if (dream === 'speed') nm.speed = this.mods.speed * 1.35;
-    if (dream === 'chains' && nm.chained === 'off') nm.chained = 'pairs';
     nm.lootValue = (dream === 'money' ? 2 : 1) * (this.lastNight ? 1.5 : 1);
     nm.noiseMul = (dream === 'money' ? 1.5 : 1) * (this.lastNight ? 1.2 : 1) * (dream === 'tiny' ? 1.25 : 1);
     nm.decayMul = dream === 'ex' ? 0.5 : 1;
@@ -202,25 +201,8 @@ export class Sim {
       this.spawnAtStash(p);
     }
     this.spawnNightLoot();
-    this.setupChains();
     this.phase = PH.INTRO; this.phaseT = PHASE_LEN.intro;
     this.ev({ e: 'night', n: this.night, of: this.mods.nights, dream, pose, last: this.lastNight });
-  }
-  setupChains() {
-    this.chains = [];
-    const mode = this.nm.chained;
-    if (mode === 'off') return;
-    const ps = this.list.slice().sort((a, b) => b.cash - a.cash);
-    if (mode === 'conga') { for (let i = 0; i + 1 < ps.length; i++) this.chains.push([ps[i].seat, ps[i + 1].seat]); return; }
-    // pairs: leader with last place, second with second-last... (never two teammates if it can be helped)
-    const left = ps.slice();
-    while (left.length >= 2) {
-      const a = left.shift();
-      let k = left.length - 1;
-      while (k > 0 && this.sameTeam(a, left[k]) && this.mods.teams !== 'ffa') k--;
-      const b = left.splice(k, 1)[0];
-      this.chains.push([a.seat, b.seat]);
-    }
   }
   endNight() {
     this.phase = PH.DAWN; this.phaseT = PHASE_LEN.dawn;
@@ -853,7 +835,6 @@ export class Sim {
       }
       this.stepPlayer(p, gdt, frozen);
     }
-    this.stepChains(gdt);
     this.collidePlayers();
     this.stepLoot(gdt);
     this.stepProps(gdt);
@@ -1361,25 +1342,6 @@ export class Sim {
     const g = this.world.groundAt(p.x, p.z, p.y, 0.5);
     if (p.y < g) p.y = g;
   }
-  stepChains(dt) {
-    const L = 6.5;
-    for (const [a, b] of this.chains) {
-      const p = this.players[a], q = this.players[b];
-      if (!p || !q || p.st === ST.OUT || q.st === ST.OUT || p.st === ST.SPEC || q.st === ST.SPEC) continue;
-      if (p.heldBy === q.seat || q.heldBy === p.seat) continue;
-      const dx = q.x - p.x, dy = q.y - p.y, dz = q.z - p.z, d = hyp(dx, dy, dz);
-      if (d <= L) continue;
-      const ex = (d - L) / d;
-      const pw = p.st === ST.HELD ? 0 : q.st === ST.HELD ? 1 : 0.5;
-      p.x += dx * ex * pw; p.y += dy * ex * pw * 0.5; p.z += dz * ex * pw;
-      q.x -= dx * ex * (1 - pw); q.y -= dy * ex * (1 - pw) * 0.5; q.z -= dz * ex * (1 - pw);
-      // take out velocity along the chain
-      const ux = dx / d, uy = dy / d, uz = dz / d;
-      const rel = (q.vx - p.vx) * ux + (q.vy - p.vy) * uy + (q.vz - p.vz) * uz;
-      if (rel > 0) { p.vx += ux * rel * 0.5; p.vy += uy * rel * 0.5; p.vz += uz * rel * 0.5; q.vx -= ux * rel * 0.5; q.vy -= uy * rel * 0.5; q.vz -= uz * rel * 0.5; }
-      if (d > L * 2.2) { const k = (d - L * 2.2) / d; q.x -= dx * k; q.z -= dz * k; }
-    }
-  }
   collidePlayers() {
     const ps = this.list;
     for (let i = 0; i < ps.length; i++) {
@@ -1771,7 +1733,7 @@ export class Sim {
       w: [r2(W.breath), r2(W.mouth), r2(W.morph), r2(W.liftL), r2(W.liftR), W.A.name, W.B.name, r2(g.phase || 0)],
       bu: W.bumps.map(b => [r2(b.x), r2(b.z), r2(b.r), r2(b.a)]), H, P, L, full: full ? 1 : 0,
       X: this.props.map(o => [o.id, o.kind === 'proj' ? 'p_' + o.what : o.kind, r2(o.x), r2(o.y), r2(o.z), r2(o.yaw || 0), o.owner, r2(o.t)]),
-      wa: r2(this.water), ch: this.chains, cat: this.cat ? [r2(this.cat.x), r2(this.cat.y), r2(this.cat.z), r2(this.cat.yaw), CAT_STATES.indexOf(this.cat.state), r2(this.cat.t), r2(this.cat.sp || 0)] : null, ls: g.lullaby > 0 ? 1 : 0,
+      wa: r2(this.water), cat: this.cat ? [r2(this.cat.x), r2(this.cat.y), r2(this.cat.z), r2(this.cat.yaw), CAT_STATES.indexOf(this.cat.state), r2(this.cat.t), r2(this.cat.sp || 0)] : null, ls: g.lullaby > 0 ? 1 : 0,
       st: this.stashes.map(s => s.alert > 0 ? 1 : 0),
     };
     for (const st of this.stashes) if (st.alert > 0) st.alert -= 0.05;
@@ -1782,7 +1744,7 @@ export class Sim {
   info() {
     return {
       mods: this.mods, nights: this.mods.nights, dream: this.dream,
-      nm: { gravity: this.nm.gravity, slippery: this.nm.slippery, speed: this.nm.speed, stamina: this.nm.stamina, golf: this.nm.golf, size: this.nm.size, chained: this.nm.chained, lootValue: this.nm.lootValue },
+      nm: { gravity: this.nm.gravity, slippery: this.nm.slippery, speed: this.nm.speed, stamina: this.nm.stamina, golf: this.nm.golf, size: this.nm.size, lootValue: this.nm.lootValue },
       players: this.list.map(p => ({ seat: p.seat, pid: p.pid, name: p.name, bot: p.bot, cos: p.cos, color: p.color, team: p.team, cash: p.cash, tonight: p.tonight, inv: p.inv, fx: compactFx(p.fx), fxNext: p.fxNext || {}, stats: p.stats, totals: p.totals, ready: !!p.shopReady, scale: p.scale, away: !!p.away })),
       awards: this.awardsTonight, final: this.final,
     };

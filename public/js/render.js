@@ -465,10 +465,6 @@ export class Renderer {
     this.arcEnd = new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthTest: false, side: THREE.DoubleSide }));
     this.arcEnd.renderOrder = 8; this.arcEnd.visible = false;
     s.add(this.arcEnd);
-    // chains between chained goblins
-    this.chainLinks = new THREE.InstancedMesh(new THREE.TorusGeometry(0.22, 0.06, 6, 10), new THREE.MeshStandardMaterial({ color: 0x9aa0aa, metalness: 0.9, roughness: 0.3 }), 16 * 8);
-    this.chainLinks.count = 0; this.chainLinks.frustumCulled = false; this.chainLinks.castShadow = true;
-    s.add(this.chainLinks);
     // flood water
     this.water = new THREE.Mesh(new THREE.PlaneGeometry(BED.x1 - BED.x0 + 2, BED.z1 - BED.z0 + 2, 40, 60), new THREE.MeshStandardMaterial({ color: 0x3a8ad8, transparent: true, opacity: 0.55, roughness: 0.1, metalness: 0.2, depthWrite: false }));
     this.water.rotation.x = -Math.PI / 2; this.water.position.set(0, -5, (BED.z0 + BED.z1) / 2); this.water.visible = false;
@@ -514,7 +510,7 @@ export class Renderer {
 
   // ---------------------------------------------------------------- per frame
   /**
-   * view: { world, players[], loot (Map), props[], hands[], stashes[], chains[], water, eyes, look, phase, mode, me, cam }
+   * view: { world, players[], loot (Map), props[], hands[], stashes[], water, eyes, look, phase, mode, me, cam }
    */
   render(view, dt) {
     this.time += dt;
@@ -540,7 +536,6 @@ export class Renderer {
     this.syncProps(view, dt);
     this.syncHands(view, dt);
     this.syncStashes(view);
-    this.syncChains(view);
     this.syncEyes(view, dt);
     this.syncCat(view.cat, dt);
     // water
@@ -684,28 +679,6 @@ export class Renderer {
       ud.label.material.opacity = Math.max(0, Math.min(1, (cd - 7) / 6));
       ud.label.visible = ud.label.material.opacity > 0.02;
     });
-  }
-  syncChains(view) {
-    let n = 0;
-    const W = this.world;
-    for (const [a, b] of view.chains || []) {
-      const p = view.players.find(x => x.seat === a), q = view.players.find(x => x.seat === b);
-      if (!p || !q || p.st === ST.OUT || q.st === ST.OUT) continue;
-      const L = 14;
-      for (let k = 0; k < L; k++) {
-        const t = (k + 0.5) / L;
-        const x = p.x + (q.x - p.x) * t, z = p.z + (q.z - p.z) * t;
-        const d = Math.hypot(q.x - p.x, q.z - p.z);
-        let y = p.y + 0.7 + (q.y - p.y) * t - Math.sin(t * Math.PI) * Math.max(0, 6.5 - d) * 0.35;
-        y = Math.max(y, W.heightAt(x, z) + 0.15);
-        tmpQ.setFromEuler(new THREE.Euler(0, Math.atan2(q.x - p.x, q.z - p.z), k % 2 ? Math.PI / 2 : 0));
-        tmpM.compose(tmpV.set(x, y, z), tmpQ, tmpS.set(1, 1, 1));
-        this.chainLinks.setMatrixAt(n++, tmpM);
-        if (n >= 16 * 8) break;
-      }
-    }
-    this.chainLinks.count = n;
-    this.chainLinks.instanceMatrix.needsUpdate = true;
   }
   syncCat(c, dt) {
     if (!c) { if (this.cat) this.cat.visible = false; return; }

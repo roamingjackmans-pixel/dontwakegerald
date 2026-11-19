@@ -137,7 +137,6 @@ export const DREAMS = {
   none:     { name: 'A Dreamless Sleep',       line: 'zzz... mmh... zzz...', desc: 'Just a normal night. Enjoy it while it lasts.' },
   flying:   { name: 'Gerald Dreams of Flying', line: "wheee... I'm a pigeon... I'm a BEAUTIFUL pigeon...", desc: 'Low gravity: huge jumps, floaty throws.' },
   money:    { name: 'Gerald Dreams of Money',  line: "it's all mine... the coins... they're warm...", desc: 'All loot is worth double, but noise counts 50% more.' },
-  chains:   { name: 'Gerald Dreams of Chains', line: 'no warden... not the chain gang again...', desc: 'Everyone is chained to a rival. The leader is chained to last place.' },
   golf:     { name: 'Gerald Dreams of Golf',   line: "fore... FORE... why won't they listen...", desc: 'Swings hit 2x harder, golf balls everywhere, trick shots pay double.' },
   ex:       { name: 'Gerald Dreams of His Ex', line: 'Brenda... BRENDA... you took the good blender...', desc: 'Restless: noise fades half as fast and he twitches a lot.' },
   butter:   { name: 'Gerald Dreams of Butter', line: 'more butter... no, MORE...', desc: 'Everything is slippery. Stopping is a suggestion.' },
@@ -175,7 +174,6 @@ export const MODS = [
   { id: 'cat', group: 'Gerald', name: 'Mr. Biscuits the cat', type: 'bool', def: true },
   // chaos
   { id: 'dreams', group: 'Chaos', name: 'Dream twist each night', type: 'bool', def: true },
-  { id: 'chained', group: 'Chaos', name: 'Always chained', type: 'choice', options: ['off', 'pairs', 'conga'], labels: ['Off', 'To a rival', 'Conga line (everyone)'], def: 'off' },
   { id: 'gravity', group: 'Chaos', name: 'Gravity', type: 'choice', options: [0.45, 0.7, 1, 1.4], labels: ['Moon', 'Floaty', 'Normal', 'Heavy'], def: 1 },
   { id: 'speed', group: 'Chaos', name: 'Game speed', type: 'choice', options: [0.8, 1, 1.25, 1.5], labels: ['Sleepy', 'Normal', 'Fast', 'Zoomies'], def: 1 },
   { id: 'size', group: 'Chaos', name: 'Goblin size', type: 'choice', options: [0.7, 1, 1.6], labels: ['Teeny', 'Normal', 'Chonky'], def: 1 },
@@ -198,7 +196,6 @@ export const DREAM_DEFAULT_POOL = DREAM_IDS.filter(d => d !== 'none');
 export const PRESETS = [
   { id: 'classic', name: 'Classic', desc: 'The way Gerald intended.', mods: {} },
   { id: 'chaos', name: 'Total Chaos', desc: 'Everything, all at once, louder.', mods: { sleep: 1.4, golf: 2, noodle: true, butter: true, loot: 2, gravity: 0.7, speed: 1.25 } },
-  { id: 'chained', name: 'Chained Rivals', desc: 'You and your worst enemy, one chain.', mods: { chained: 'pairs' } },
   { id: 'golf', name: 'Golf Brawl', desc: 'Swing at everything. Fore.', mods: { golf: 3, noodle: true } },
   { id: 'silent', name: 'Silent Night', desc: 'He wakes if you breathe. Whisper.', mods: { sleep: 2, voiceRange: 14 } },
   { id: 'butter', name: 'Butter Dimension', desc: 'Slippery, floaty, fast.', mods: { slippery: true, gravity: 0.45, speed: 1.25 } },

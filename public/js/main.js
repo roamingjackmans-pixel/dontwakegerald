@@ -109,7 +109,7 @@ class App {
       cam = this.camOverride || { yaw: Math.PI + Math.sin(a) * 0.4, pitch: 0.62 + Math.sin(a * 1.3) * 0.06, dist: 40, fov: 55, tx: 0, ty: 26, tz: -54 };
     }
     audio.setSnore(0.35, ph);
-    this.renderer.render({ world: W, players, loot: new Map(), props: [], hands: [], stashes: [], chains: [], water: 0, eyes: 0, mode: 'sleep', dream: 'none', me: 99, cam, spots: [] }, dt);
+    this.renderer.render({ world: W, players, loot: new Map(), props: [], hands: [], stashes: [], water: 0, eyes: 0, mode: 'sleep', dream: 'none', me: 99, cam, spots: [] }, dt);
   }
   // ---------------------------------------------------------------- rooms
   me() {

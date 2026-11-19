@@ -240,7 +240,7 @@ export class Game {
     }
     // the world
     const sim = this.sim, W = sim.world;
-    sim.phase = s.ph; sim.phaseT = s.pt; sim.night = s.n; sim.dream = s.d; sim.water = s.wa; sim.chains = s.ch;
+    sim.phase = s.ph; sim.phaseT = s.pt; sim.night = s.n; sim.dream = s.d; sim.water = s.wa;
     const [br, mo, mor, lL, lR, pa, pb, gph] = s.w;
     if (W.A.name !== pa) W.A = W.pose(pa);
     if (W.B.name !== pb) W.B = W.pose(pb);
@@ -449,7 +449,7 @@ export class Game {
   baseView() {
     const sim = this.sim;
     return {
-      world: sim.world, dream: sim.dream, water: sim.water, chains: sim.chains, phase: sim.phase,
+      world: sim.world, dream: sim.dream, water: sim.water, phase: sim.phase,
       mode: sim.g.mode, eyes: sim.g.eyes || 0, look: sim.g.look, wind: sim.windAt ? Math.min(1, Math.abs(sim.windAt.f) / 6) : 0,
     };
   }

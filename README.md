@@ -10,8 +10,8 @@ sneezes, rolls over... or wakes up.
 
 Built from the best bits of the friend-slop games: Lethal Company (loot runs, a quota-ish economy, a shop between
 nights, a monster), R.E.P.O. (fragile loot that loses value, grabbing and carrying), PEAK (climbing with
-stamina), Super Battle Golf (charge-and-release golf swings, trick shots, sabotage), Chained Together (a chain
-modifier, and a dream that chains you to your rival), Content Warning / Among Us (proximity voice chat).
+stamina), Super Battle Golf (charge-and-release golf swings, trick shots, sabotage), Content Warning / Among Us
+(proximity voice chat).
 
 ## How a game goes (about 30 minutes)
 
@@ -19,8 +19,8 @@ modifier, and a dream that chains you to your rival), Content Warning / Among Us
   code, the link, one tap from the Friends list, or an invite pop-up. Everyone runs around warming up while the host
   picks modifiers. Bots fill the empty seats.
 - **5 nights** of 4:30 each (both adjustable). Each night after the first, Gerald has a **dream** that twists the
-  rules: low gravity, double money, everyone chained to a rival, golf mode, butter-slippery, a rising flood, golden
-  peas raining from the ceiling, a bouncy jelly Gerald...
+  rules: low gravity, double money, golf mode, butter-slippery, a rising flood, golden peas raining from the
+  ceiling, a bouncy jelly Gerald...
 - **Between nights** the Pawn Rat sells dirty tricks (last place gets 30% off): banana peels, a kazoo that frames the
   nearest rival for the noise, a feather that makes Gerald scratch wherever it lands, dental-floss grapple, mousetraps,
   a lullaby music box, fridge magnet, pepper shaker, bubble wrap, ball & chain, hairspray rocket, wind-up decoy.
@@ -70,9 +70,9 @@ Every menu works with a controller too (D-pad or stick to move, A to press, B fo
 ## Modifiers (host)
 Nights, night length, shop, starting cash, teams (free-for-all, duos, 2 teams), bots and bot skill (Dozy, Normal,
 Sneaky, Gremlin); how deep Gerald sleeps, voice-wakes-Gerald, each of his reactions on/off, snore wind, the cat;
-dreams on/off and which dreams, always-chained (to a rival or a conga line), gravity, game speed, goblin size, big
+dreams on/off and which dreams, gravity, game speed, goblin size, big
 heads, swing power, noodle mode, butterfingers, slippery, all-fragile loot, loot amount, stash raiding, infinite
-stamina, free item each night, proximity voice range. Plus presets (Total Chaos, Chained Rivals, Golf Brawl, Silent
+stamina, free item each night, proximity voice range. Plus presets (Total Chaos, Golf Brawl, Silent
 Night, Butter Dimension, Quick Nap).
 
 ## Progression
