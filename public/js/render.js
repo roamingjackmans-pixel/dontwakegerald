@@ -458,6 +458,10 @@ export class Renderer {
     this.arc = new THREE.Line(ag, new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.5, gapSize: 0.35, transparent: true, opacity: 0.85, depthTest: false }));
     this.arc.renderOrder = 8; this.arc.frustumCulled = false; this.arc.visible = false;
     s.add(this.arc);
+    // the line is only a pixel wide, so the arc is drawn as a trail of glowing dots too
+    this.arcDots = new THREE.InstancedMesh(new THREE.SphereGeometry(0.13, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthTest: false }), 40);
+    this.arcDots.renderOrder = 8; this.arcDots.frustumCulled = false; this.arcDots.count = 0;
+    s.add(this.arcDots);
     this.arcEnd = new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthTest: false, side: THREE.DoubleSide }));
     this.arcEnd.renderOrder = 8; this.arcEnd.visible = false;
     s.add(this.arcEnd);
@@ -787,16 +791,31 @@ export class Renderer {
     t.x += (cam.tx - t.x) * k; t.y += (cam.ty - t.y) * Math.min(1, dt * 9); t.z += (cam.tz - t.z) * k;
     // never look from inside Gerald: keep the target above his surface
     t.y = Math.max(t.y, W.heightAt(t.x, t.z) + 0.6);
-    const cp = Math.cos(cam.pitch), spp = Math.sin(cam.pitch);
-    let dist = cam.dist;
     const fx = Math.sin(cam.yaw), fz = Math.cos(cam.yaw);
-    // pull in so the camera doesn't go inside Gerald
-    for (let d = 0.8; d <= cam.dist; d += 0.4) {
-      const x = t.x - fx * cp * d, z = t.z - fz * cp * d, y = t.y + spp * d;
-      if (W.heightAt(x, z) > y - 0.35) { dist = Math.max(0.8, d - 0.4); break; }
+    // how far back the camera can go along this pitch before it hits Gerald
+    const clearDist = pitch => {
+      const cp = Math.cos(pitch), spp = Math.sin(pitch);
+      for (let d = 0.8; d <= cam.dist; d += 0.4) {
+        const x = t.x - fx * cp * d, z = t.z - fz * cp * d, y = t.y + spp * d;
+        if (W.heightAt(x, z) > y - 0.35) return Math.max(0.8, d - 0.4);
+      }
+      return cam.dist;
+    };
+    // something behind you (his arm, his belly)? rise up over it rather than jamming the camera into your back
+    let pitch = cam.pitch, dist = clearDist(pitch);
+    if (dist < cam.dist * 0.7) {
+      for (let p = pitch + 0.12; p <= 1.3; p += 0.12) { const d = clearDist(p); if (d >= cam.dist * 0.7) { pitch = p; dist = d; break; } }
     }
+    // ease the automatic lift so it doesn't snap
+    this.camLift = (this.camLift ?? 0) + ((pitch - cam.pitch) - (this.camLift ?? 0)) * Math.min(1, dt * 6);
+    pitch = cam.pitch + this.camLift;
+    dist = Math.min(dist, clearDist(pitch));
+    // walled in on every side: stay back anyway. His surface is see-through from behind, so you still see yourself.
+    const buried = dist < 3;
+    if (buried) dist = Math.min(cam.dist, 3.2);
+    const cp = Math.cos(pitch), spp = Math.sin(pitch);
     let x = t.x - fx * cp * dist, z = t.z - fz * cp * dist, y = t.y + spp * dist;
-    y = Math.max(y, W.heightAt(x, z) + 0.5);
+    if (!buried) y = Math.max(y, W.heightAt(x, z) + 0.5);
     if (this.shakeAmt > 0) {
       const s = this.shakeAmt * 0.35;
       x += (Math.random() - 0.5) * s; y += (Math.random() - 0.5) * s; z += (Math.random() - 0.5) * s;
@@ -808,7 +827,7 @@ export class Renderer {
   /** draw the throwing arc for the local player (from, aim yaw/pitch, power, golf) */
   setArc(on, p, yaw, pitch, power, golf, mass) {
     this.arc.visible = on; this.arcEnd.visible = on;
-    if (!on) return;
+    if (!on) { this.arcDots.count = 0; return; }
     const W = this.world;
     const d = aimDir(yaw, pitch);
     const sp = throwSpeed(power, golf) / Math.sqrt(1 + mass * 0.25);
@@ -830,6 +849,19 @@ export class Renderer {
     this.arcEnd.position.set(pos.getX(last), pos.getY(last) + 0.05, pos.getZ(last));
     this.arcEnd.scale.setScalar(0.9 + Math.sin(this.time * 8) * 0.1);
     this.arc.material.color.setHSL(0.33 - power * 0.33, 0.9, 0.6);
+    // dots along the arc, drifting forward so it reads as motion
+    let k = 0;
+    const off = (this.time * 4) % 1;
+    for (let i = 0; i + 1 < n && k < 40; i++) {
+      const f = off;
+      tmpV.set(pos.getX(i) + (pos.getX(i + 1) - pos.getX(i)) * f, pos.getY(i) + (pos.getY(i + 1) - pos.getY(i)) * f, pos.getZ(i) + (pos.getZ(i + 1) - pos.getZ(i)) * f);
+      const sc = 1 - i / (n + 4) * 0.5;
+      tmpM.compose(tmpV, tmpQ.identity(), tmpS.set(sc, sc, sc));
+      this.arcDots.setMatrixAt(k++, tmpM);
+    }
+    this.arcDots.count = k;
+    this.arcDots.instanceMatrix.needsUpdate = true;
+    this.arcDots.material.color.setHSL(0.33 - power * 0.33, 0.95, 0.65);
   }
 }
 
