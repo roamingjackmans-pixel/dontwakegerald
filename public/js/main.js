@@ -81,7 +81,7 @@ class App {
   menuScene(screen) { this.menuScreen = screen; if (screen !== 'wardrobe' && this.preview) this.preview = null; if (screen === 'wardrobe') this.previewCos(profile().cos); }
   previewCos(cos) {
     const p = profile();
-    this.preview = { seat: 99, x: 6, y: 0, z: -66, vx: 0, vy: 0, vz: 0, yaw: Math.PI * 0.15, st: 0, flags: 1, swingT: -1, emote: this.previewAnim || 0, talk: 0, carry: 0, scale: 1, name: p.name, color: colorHex(cos.color), cos: { ...cos } };
+    this.preview = { seat: 99, x: 20, y: 0, z: -64, vx: 0, vy: 0, vz: 0, yaw: Math.PI * 0.15, st: 0, flags: 1, swingT: -1, emote: this.previewAnim || 0, talk: 0, carry: 0, scale: 1, name: p.name, color: colorHex(cos.color), cos: { ...cos } };
   }
   previewEmote(anim) { this.previewAnim = anim; if (this.preview) this.preview.emote = anim; clearTimeout(this._peT); this._peT = setTimeout(() => { this.previewAnim = 0; if (this.preview) this.preview.emote = 0; }, 2600); }
   menuLoop(ts) {
@@ -101,7 +101,7 @@ class App {
     if (this.menuScreen === 'wardrobe' && this.preview) {
       const pv = this.preview;
       pv.y = W.heightAt(pv.x, pv.z);
-      pv.yaw = Math.PI * 0.15 + Math.sin(this.menuT * 0.6) * 0.5;
+      pv.yaw = 0.3 + Math.sin(this.menuT * 0.6) * 0.45;
       players.push(pv);
       cam = { yaw: Math.PI + 0.35, pitch: 0.18, dist: 4.4, fov: 50, tx: pv.x - 1.1, ty: pv.y + 0.9, tz: pv.z };
     } else {
