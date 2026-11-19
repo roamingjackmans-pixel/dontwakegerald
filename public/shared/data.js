@@ -216,7 +216,7 @@ export const SLEEP_TALK = [
   "that's not a tax return, that's a raccoon...",
   'put the moon back... put it BACK...',
   'yes officer, the horse can drive...',
-  'my teeth are made of soup...',
+  'my pillow is made of marshmallows...',
   "don't tell the toaster...",
   'tiny feet... so many tiny feet...',
   'I am the captain of the couch...',
@@ -232,7 +232,7 @@ export const SLEEP_TALK = [
   'the dentist is a wizard...',
   'my belly button... has a gift shop...',
   'zzzz... sssnrrk... zzzz...',
-  'mmm... crumbs... beard snacks for later...',
+  'mmm... pancakes... a tower of pancakes...',
   "tell the pigeons I said sorry...",
   'is that... a contractor... on my nose...',
   "I didn't sign up for the tiny Olympics...",
@@ -265,8 +265,8 @@ export const RAT_LINES = [
 ];
 
 // ---------------------------------------------------------------- bot names
-export const BOT_NAMES = ['Nibbles', 'Crumb Lord', 'Sir Lint', 'Button Tony', 'Sock Steve', 'Grub', 'Belly Pete', 'Mint Witch',
-  'Gristle', 'Lady Thimble', 'Pocket Kevin', 'Dust Bunny', 'Mungo', 'Fuzzy Frank', 'The Count of Crumbs', 'Little Dorris'];
+export const BOT_NAMES = ['Nibbles', 'Crumb Lord', 'Sir Fluff', 'Button Tony', 'Sock Steve', 'Pip', 'Belly Pete', 'Mint Witch',
+  'Biscuit Bob', 'Lady Thimble', 'Pocket Kevin', 'Dust Bunny', 'Mungo', 'Fuzzy Frank', 'The Count of Crumbs', 'Little Dorris'];
 export const BOT_SKILL = {
   easy: { react: 1.1, aim: 0.55, greed: 0.6, aggro: 0.15, care: 0.2, items: 0.2 },
   normal: { react: 0.55, aim: 0.78, greed: 0.8, aggro: 0.35, care: 0.55, items: 0.5 },

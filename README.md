@@ -37,6 +37,7 @@ modifier, and a dream that chains you to your rival), Content Warning / Among Us
 - Fill it and he **WAKES UP**: freeze! Anyone who moves gets flicked off the bed, and whoever woke him pays a fine
   that's shared out to everyone else. Then he rolls over and goes back to sleep.
 - **Mr. Biscuits**, his cat, hops on the bed from night 2 and pounces on whoever is moving.
+- Climb to the tip of his nose and hold the interact button to **boop** it: he does a cute little sneeze that blows everyone (you included) off his face.
 
 ### Controls (keyboard + mouse or any controller)
 | Action | Keyboard / mouse | Controller |

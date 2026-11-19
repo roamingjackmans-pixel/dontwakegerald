@@ -217,6 +217,8 @@ export class Hud {
     } else if (view.target) {
       const l = view.loot.get(view.target);
       if (l) p = `<b>${glyph('grab')}</b> grab ${esc(LOOT[l.type].name)} <span class="v">$${l.value}</span>`;
+    } else if (sim.phase === PH.NIGHT && Math.hypot(me.x, me.z + 52.6) < 4 && me.y > 24) {
+      p = `Hold <b>${glyph('interact')}</b> to boop his nose 👃✨ (he'll sneeze everyone off his face)`;
     } else if (sim.mods.raids && sim.phase === PH.NIGHT) {
       for (const s of sim.stashes) {
         if (Math.hypot(s.x - me.x, s.z - me.z) > STASH_RADIUS + 0.6) continue;

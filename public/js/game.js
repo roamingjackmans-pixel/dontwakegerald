@@ -653,7 +653,8 @@ export class Game {
       case 'warn': if (e.target === this.seat) { this.hud.flash('✋ THE HAND IS COMING FOR YOU! RUN!', 'bad'); input.rumble(0.7, 300); } break;
       case 'caught': if (mine(e.seat)) this.hud.flash('😱 HE SAW YOU MOVE!', 'bad'); break;
       case 'waker': if (mine(e.seat)) this.hud.flash(`⏰ You woke him up! Fined $${e.fine}`, 'bad'); break;
-      case 'sneeze': { const n = SPOTS.noseTip; R.emit(n.x, n.y, n.z + 3, 160, { colors: [0xffffff, 0xcfe6ff, 0xfff4b0], speed: 26, up: 4, grav: 2, drag: 1.2, life: 1.6, size: 0.5 }); break; }
+      case 'sneeze': { const n = SPOTS.noseTip, s = e.s || 1; R.emit(n.x, n.y, n.z + 3, Math.round(160 * s), { colors: [0xffffff, 0xcfe6ff, 0xfff4b0, 0xffc2e6], speed: 26 * Math.sqrt(s), up: 4, grav: 2, drag: 1.2, life: 1.6, size: 0.5 }); break; }
+      case 'boop': { const n = SPOTS.noseTip; R.emit(n.x, n.y + 1, n.z, 24, { colors: [0xffc2e6, 0xffffff, 0xfff4b0], speed: 4, up: 3, grav: 2, life: 1, size: 0.4 }); R.popup(n.x, n.y + 3, n.z, 'boop!', '#ffc2e6', true); if (mine(e.seat)) input.rumble(0.3, 120); break; }
       case 'roll': R.shake(0.9); break;
       case 'out': if (mine(e.seat)) this.hud.flash('💫 You fell off the bed!', 'bad'); break;
       case 'swing': { const g = R.goblins.get(e.seat); if (g) g.play('swing'); break; }

@@ -479,7 +479,7 @@ export class Sim {
   _newGerald() {
     return {
       noise: 0, breathT: 0, mode: 'sleep', modeT: 0, lullaby: 0, restless: 1,
-      cd: { twitch: 3, scratch: 6, swat: 6, big: 12 }, nextBig: 'sneeze',
+      cd: { twitch: 3, scratch: 6, swat: 6, big: 12, boop: 0 }, nextBig: 'sneeze',
       hands: { L: newHand('L'), R: newHand('R') }, bumpList: [], talkT: 18 + Math.random() * 12, ambientT: 20,
       waker: -1, flickQueue: [], flickT: 0, sneeze: 0, eyes: 0, look: -1, bubbleT: 8, peaT: 5, morphT: 0, morphLen: 0, nextPose: null,
     };
@@ -699,9 +699,21 @@ export class Sim {
     this.feed(`👉 Gerald flicked ${p.name}`);
     this.ev({ e: 'flicked', seat: p.seat });
   }
-  startSneeze() {
+  boopNose(p) {
     const g = this.g;
-    g.mode = 'sneezeIn'; g.modeT = 0;
+    if (g.mode !== 'sleep' || g.cd.boop > 0) { if (g.mode === 'sleep') this.ev({ e: 'deny', seat: p.seat, msg: 'His nose needs a moment...' }); return; }
+    g.cd.boop = 18;
+    this.addNoise(4, p.x, p.z, p.seat);
+    this.ev({ e: 'boop', seat: p.seat });
+    this.sfx('boing', p.x, p.y, p.z, { pitch: 1.9 });
+    this.feed(`👃 ${p.name} booped Gerald's nose!`);
+    p.stats.boops = (p.stats.boops || 0) + 1;
+    this.startSneeze(true, p.name);
+  }
+  startSneeze(mini = false, who = '') {
+    const g = this.g;
+    g.mode = 'sneezeIn'; g.modeT = 0; g.mini = mini;
+    if (mini) { this.announce('ah... ah...', `${who} booped his nose!`, 'warn'); this.sfx('sneeze_in', SPOTS.noseTip.x, SPOTS.noseTip.y, SPOTS.noseTip.z, { global: 1, pitch: 1.35 }); return; }
     this.announce('AAAH... AAAAH...', 'He is going to sneeze!', 'warn');
     this.sfx('sneeze_in', SPOTS.noseTip.x, SPOTS.noseTip.y, SPOTS.noseTip.z, { global: 1 });
   }
@@ -753,11 +765,12 @@ export class Sim {
     g.modeT += dt;
     if (g.mode === 'sneezeIn') {
       // he breathes in: everything near his nose gets pulled toward it
-      this.windAt = { x: SPOTS.noseTip.x, z: SPOTS.noseTip.z, r: 30, f: -9 };
-      if (g.modeT > 2.3) {
+      this.windAt = { x: SPOTS.noseTip.x, z: SPOTS.noseTip.z, r: g.mini ? 16 : 30, f: g.mini ? -5 : -9 };
+      if (g.modeT > (g.mini ? 1.3 : 2.3)) {
         g.mode = 'sleep'; this.windAt = null;
-        this.sneezeBlast();
-        g.noise = Math.max(0, g.noise - 30);
+        this.sneezeBlast(g.mini ? 0.6 : 1);
+        g.noise = Math.max(0, g.noise - (g.mini ? 8 : 30));
+        g.mini = false;
       }
     } else if (g.mode === 'waking') {
       g.eyes = Math.min(1, g.modeT / 1.2);
@@ -789,24 +802,27 @@ export class Sim {
       if (g.modeT > 3.5) { g.mode = 'sleep'; g.noise = 20; g.rolledThisWake = false; g.cd.big = 14; g.cd.swat = 6; g.waker = g.waker; this.announce('...zzz...', 'He fell back asleep', 'calm'); }
     }
   }
-  sneezeBlast() {
+  sneezeBlast(scale = 1) {
     const n = SPOTS.noseTip;
-    this.sfx('sneeze', n.x, n.y, n.z, { global: 1 });
-    this.ev({ e: 'sneeze' });
-    this.ev({ e: 'shake', x: n.x, z: n.z, a: 1.4 });
+    const R = 36 * Math.sqrt(scale);
+    this.sfx(scale < 1 ? 'tiny_sneeze' : 'sneeze', n.x, n.y, n.z, { global: 1, pitch: scale < 1 ? 0.55 : 1 });
+    this.ev({ e: 'sneeze', s: scale });
+    this.ev({ e: 'shake', x: n.x, z: n.z, a: 1.4 * scale });
     for (const p of this.list) {
       if (p.st === ST.OUT || p.st === ST.SPEC) continue;
       const dx = p.x - n.x, dz = p.z - n.z, d = hyp(dx, dz) || 1;
-      if (d > 36) continue;
-      const f = 1 - d / 36;
+      if (d > R) continue;
+      const f = 1 - d / R;
       this.dropEverything(p);
-      this.knock(p, dx / d * (10 + 24 * f), 8 + 14 * f, dz / d * (10 + 24 * f), 1.2 + f, -1);
+      // right on the nose? straight up into the air you go
+      const up = d < 3 ? 22 : 0;
+      this.knock(p, dx / d * (10 + 24 * f) * (d < 3 ? 0.4 : 1) + (d < 3 ? (this.rnd() - 0.5) * 10 : 0), 8 + 14 * f + up, dz / d * (10 + 24 * f) * (d < 3 ? 0.4 : 1) + (d < 3 ? 8 : 0), 1.2 + f, -1);
     }
     for (const l of this.loot.values()) {
       if (l.st !== LS.FREE) continue;
       const dx = l.x - n.x, dz = l.z - n.z, d = hyp(dx, dz) || 1;
-      if (d > 36) continue;
-      const f = 1 - d / 36;
+      if (d > R) continue;
+      const f = 1 - d / R;
       this.wake(l); l.vx += dx / d * 22 * f; l.vz += dz / d * 22 * f; l.vy += 10 * f;
     }
   }
@@ -1082,6 +1098,14 @@ export class Sim {
       this.sfx('swing_whoosh', p.x, p.y, p.z);
     }
     if (press & B.USE) this.useItem(p);
+    // boop his nose: hold interact standing on the tip of it (he does a cute little sneeze that blows everyone off his face)
+    const nose = SPOTS.noseTip;
+    if ((held & B.INTERACT) && !carried && this.phase === PH.NIGHT && hyp(p.x - nose.x, p.z - nose.z) < 4 && p.y > 24) {
+      p.boopT = (p.boopT || 0) + dt;
+      if (p.boopT > 0.5) { p.boopT = 0; this.boopNose(p); }
+      return;
+    }
+    p.boopT = 0;
     // steal from a rival stash: hold interact inside it
     if ((held & B.INTERACT) && !carried && p.holding < 0 && this.mods.raids && this.phase === PH.NIGHT) {
       const s = this.stashes.find(s => hyp(s.x - p.x, s.z - p.z) < STASH_R + 0.6 && s.items.length);
