@@ -679,6 +679,10 @@ export class Renderer {
       const img = ud.label.material.map && ud.label.material.map.image;
       const asp = img ? img.width / img.height : 5;
       ud.label.scale.set(0.75 * asp, 0.75, 1);
+      // up close the tag would fill the screen: fade it out (you know whose bottle cap you're standing in)
+      const cd = this.camera.position.distanceTo(g.position);
+      ud.label.material.opacity = Math.max(0, Math.min(1, (cd - 7) / 6));
+      ud.label.visible = ud.label.material.opacity > 0.02;
     });
   }
   syncChains(view) {
