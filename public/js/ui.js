@@ -18,6 +18,15 @@ const NAME_A = ['Sneaky', 'Tiny', 'Wobbly', 'Sir', 'Lady', 'Captain', 'Little', 
 const NAME_B = ['Nib', 'Pip', 'Button', 'Crumb', 'Thimble', 'Bean', 'Lint', 'Sprinkle', 'Mumble', 'Pocket', 'Biscuit', 'Wiggle'];
 export const randomName = () => NAME_A[(Math.random() * NAME_A.length) | 0] + ' ' + NAME_B[(Math.random() * NAME_B.length) | 0];
 
+// which way a click on a ◀ value ▶ control goes
+function clickDir(e, c) {
+  const a = e.target.closest && e.target.closest('[data-d]');
+  if (a) return +a.dataset.d;
+  if (!e.detail) return 1;   // keyboard Enter or controller A
+  const r = c.getBoundingClientRect();
+  return e.clientX < r.left + r.width / 2 ? -1 : 1;
+}
+
 export class UI {
   constructor(app) {
     this.app = app;
@@ -334,7 +343,7 @@ export class UI {
   scr_settings(el) {
     const s = profile().settings;
     const slider = (k, label, min, max, step) => `<label class="srow"><span>${label}</span><input type="range" data-k="${k}" min="${min}" max="${max}" step="${step}" value="${s[k]}"><b data-v="${k}">${(+s[k]).toFixed(step < 1 ? 2 : 0)}</b></label>`;
-    const cyc = (k, label, opts) => `<div class="srow"><span>${label}</span><div class="cycler" tabindex="0" data-k="${k}" data-opts='${JSON.stringify(opts)}'>◀ <b>${esc(opts.find(o => o[0] === s[k])?.[1] ?? s[k])}</b> ▶</div></div>`;
+    const cyc = (k, label, opts) => `<div class="srow"><span>${label}</span><div class="cycler" tabindex="0" data-k="${k}" data-opts='${JSON.stringify(opts)}'><i class="arr" data-d="-1">◀</i><b>${esc(opts.find(o => o[0] === s[k])?.[1] ?? s[k])}</b><i class="arr" data-d="1">▶</i></div></div>`;
     el.innerHTML = `<div class="card wide settings">
       <h2>Settings</h2>
       <div class="cols"><div>
@@ -353,7 +362,7 @@ export class UI {
       const opts = JSON.parse(c.dataset.opts);
       const set = d => { const i = opts.findIndex(o => o[0] === s[c.dataset.k]); const n = opts[(i + d + opts.length) % opts.length]; s[c.dataset.k] = n[0]; $('b', c).textContent = n[1]; save(); this.app.applySettings(); };
       c.addEventListener('cycle', e => set(e.detail));
-      c.onclick = () => set(1);
+      c.onclick = e => set(clickDir(e, c));
     });
     $('#mictest', el).onclick = async () => {
       const ok = await this.app.voice.enableMic();
@@ -462,7 +471,7 @@ export class UI {
       <div class="tabs">${[...groups, 'Dreams'].map(t => `<button data-g="${t}" class="${t === this.modTab ? 'on' : ''}">${t}</button>`).join('')}</div>
       <div class="modlist">${this.modTab === 'Dreams'
         ? `<p class="dim">Each night after the first, Gerald has one of these dreams (a rule twist). Turn off the ones you don't like.</p><div class="chips">${DREAM_IDS.filter(d => d !== 'none').map(d => `<div class="chip ${pool.includes(d) ? 'on' : ''}" tabindex="0" data-dream="${d}" title="${esc(DREAMS[d].desc)}">${esc(DREAMS[d].name.replace('Gerald Dreams of ', '').replace('Gerald Dreams He Is ', ''))}</div>`).join('')}</div><div class="ddesc dim"></div>`
-        : MODS.filter(m => m.group === this.modTab).map(m => `<div class="mrow ${mods[m.id] !== MOD_DEFAULTS[m.id] ? 'changed' : ''}"><span>${esc(m.name)}</span>${host ? `<div class="cycler" tabindex="0" data-mod="${m.id}">◀ <b>${esc(label(m, mods[m.id]))}</b> ▶</div>` : `<b>${esc(label(m, mods[m.id]))}</b>`}</div>`).join('')}</div>`;
+        : MODS.filter(m => m.group === this.modTab).map(m => `<div class="mrow ${mods[m.id] !== MOD_DEFAULTS[m.id] ? 'changed' : ''}"><span>${esc(m.name)}</span>${host ? `<div class="cycler" tabindex="0" data-mod="${m.id}"><i class="arr" data-d="-1">◀</i><b>${esc(label(m, mods[m.id]))}</b><i class="arr" data-d="1">▶</i></div>` : `<b>${esc(label(m, mods[m.id]))}</b>`}</div>`).join('')}</div>`;
     $$('.tabs button', box).forEach(b => b.onclick = () => { this.modTab = b.dataset.g; this.renderMods(); const t = $(`.lb-mods [data-g="${this.modTab}"]`, this.overlay); if (t && input.device === 'pad') t.focus(); });
     if (!host) return;
     const apply = (m, pl) => { g.setMods(m, pl); const p = profile(); p.lastMods = g.sim.mods; p.lastPool = g.sim.dreamPool; save(); this.refreshLobby(); };
@@ -478,7 +487,7 @@ export class UI {
         const n = $(`.cycler[data-mod="${m.id}"]`, this.overlay); if (n) n.focus();
       };
       c.addEventListener('cycle', e => set(e.detail));
-      c.onclick = () => set(1);
+      c.onclick = e => set(clickDir(e, c));
     });
     $$('[data-dream]', box).forEach(c => {
       c.onfocus = c.onmouseenter = () => { $('.ddesc', box).textContent = DREAMS[c.dataset.dream].desc; };
