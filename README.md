@@ -63,7 +63,7 @@ For testing, `?map=beach` (or `camp`, `hammock`, `bedroom`) keeps a game you hos
 | Slap (knocks loot out of hands) | E | X |
 | Dive tackle | C or Ctrl | B |
 | Use item / pick item | Q / 1-3, wheel | LB / D-pad left-right |
-| Rob a rival's stash (hold inside it) | F | Y |
+| Rob a rival's stash (hold inside it, about 2 s per random item) | F | Y |
 | Emote wheel (hold) | T | D-pad up |
 | Push-to-talk | V | D-pad down |
 | Scores / menu | Tab / Esc | View / Start |

@@ -668,6 +668,7 @@ export class Game {
       case 'roll': R.shake(0.9); break;
       case 'out': if (mine(e.seat)) this.hud.flash(`💫 You ${(MAPS[sim.map] || MAPS.bedroom).fell}!`, 'bad'); break;
       case 'splash': R.emit(e.x, (sim.water || 0) + 0.3, e.z, 40, { colors: [0xffffff, 0xbfe8ff, 0x7fc8ff], speed: 7, up: 6, grav: 14, life: 1, size: 0.45 }); break;
+      case 'respawn': R.emit(e.x, e.y + 0.6, e.z, 26, { colors: [0xfff4b0, 0xffffff, 0xffd34d, 0xc9f0ff], speed: 3.5, up: 4, grav: 1.5, life: 1.1, size: 0.35 }); R.popup(e.x, e.y + 2, e.z, '✨', '#fff4b0'); break;
       case 'swing': { const g = R.goblins.get(e.seat); if (g) g.play('swing'); break; }
       case 'slap': { const g = R.goblins.get(e.seat); if (g) g.play('slap'); break; }
       case 'grabbed': if (mine(e.seat)) { this.hud.flash(`🙌 Grabbed! Mash ${glyph('jump')} to wiggle free!`, 'bad'); input.rumble(0.5, 200); } break;

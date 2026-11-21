@@ -9,6 +9,7 @@ import {
 
 // the beach tide rises from TIDE0 to TIDE1 over the night; the hammock's sideways push per radian of tilt
 const TIDE0 = -3, TIDE1 = 0.8, SWAY_ACC = 70;
+const STEAL_TIME = 2.1;   // seconds of holding interact in a rival stash to pull one thing out
 
 export const B = { JUMP: 1, SPRINT: 2, GRAB: 4, SWING: 8, SLAP: 16, DIVE: 32, USE: 64, INTERACT: 128, EMOTE: 256 };
 export const ST = { OK: 0, RAG: 1, HELD: 2, FLAT: 3, OUT: 4, SPEC: 5, ZIP: 6 };
@@ -1140,7 +1141,7 @@ export class Sim {
         p.stealT += dt;
         p.stealFrom = s.seat;
         if (((p.stealT * 4) | 0) !== (((p.stealT - dt) * 4) | 0)) { this.addNoise(NOISE.stealPerSec * 0.25, p.x, p.z, p.seat); this.ev({ e: 'stealing', seat: p.seat, from: s.seat }); s.alert = 1.5; }
-        if (p.stealT >= 1.4 / (this.nm.stealMul || 1)) { p.stealT = 0; this.steal(p, s); }
+        if (p.stealT >= STEAL_TIME / (this.nm.stealMul || 1)) { p.stealT = 0; this.steal(p, s); }
       } else { p.stealT = 0; p.stealFrom = -1; }
     } else { p.stealT = 0; p.stealFrom = -1; }
   }
@@ -1490,8 +1491,34 @@ export class Sim {
           if (d < STASH_R && l.y < W.heightAt(s.x, s.z) + 3.5) { this.deposit(l, s); break; }
         }
       }
-      if (l.st === LS.FREE && (l.y < PHYS.fallY || this.tideOut(l.x, l.y - def.r, l.z))) this.removeLoot(l);
+      if (l.st === LS.FREE && (l.y < PHYS.fallY || this.tideOut(l.x, l.y - def.r, l.z))) {
+        if (this.phase === PH.NIGHT || this.phase === PH.LOBBY) this.respawnLoot(l); else this.removeLoot(l);
+      }
     }
+  }
+  /** loose loot that went off the map turns up again somewhere random on Gerald (same thing, same value) */
+  respawnLoot(l) {
+    const def = LOOT[l.type], value = l.value, base = l.base, counts = this.world.regionCounts();
+    this.removeLoot(l);
+    const pick = list => list.map(([rid, w]) => [REGION[rid], w]).filter(([ri]) => counts.get(ri));
+    let opts = pick(Object.entries(def.regions || {}));
+    if (!opts.length) opts = pick([['bed', 3], ['blanket', 3], ['chest', 2], ['belly', 2], ['pillow', 1]]);   // jackpots have no regions of their own
+    const total = opts.reduce((s, o) => s + o[1], 0);
+    const W = this.world;
+    for (let k = 0; k < 20 && opts.length; k++) {
+      let r = this.rnd() * total, ri = opts[0][0];
+      for (const [i, w] of opts) { r -= w; if (r <= 0) { ri = i; break; } }
+      const at = W.randomIn(ri, this.rnd);
+      if (!at) continue;
+      const [x, z] = at, h = W.heightAt(x, z);
+      // not in a stash, and not anywhere the tide is about to take it again
+      if (this.nearStash(x, z, 4) || this.unsafe(x, z) || (this.map === 'beach' && h < this.water + 1.5)) continue;
+      const n = this.makeLoot(l.type, x, h + def.r + 0.02, z);
+      n.value = value; n.base = base;
+      this.ev({ e: 'respawn', x: r2(n.x), y: r2(n.y), z: r2(n.z) });
+      return n;
+    }
+    return null;
   }
   stashInUse(s) {
     if (this.mods.teams === 'ffa') return !!this.players[s.seat];
@@ -1553,10 +1580,10 @@ export class Sim {
     if (credit !== depositor && depositor && !lobby) this.feed(`🎁 ${depositor.name} gifted $${value} to ${credit.name}'s stash`);
   }
   steal(p, s) {
-    // take the most valuable thing
-    let best = null;
-    for (const id of s.items) { const l = this.loot.get(id); if (l && (!best || l.value > best.value)) best = l; }
-    if (!best) return;
+    // rummage around and come out with whatever your hand finds
+    const there = s.items.map(id => this.loot.get(id)).filter(Boolean);
+    if (!there.length) return;
+    const best = there[(this.rnd() * there.length) | 0];
     s.items = s.items.filter(id => id !== best.id);
     const victim = this.players[best.credit];
     if (victim) { victim.cash -= best.value; victim.tonight -= best.value; }

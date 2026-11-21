@@ -389,7 +389,7 @@ export class UI {
         <li>Steep bits are a <b>climb</b>: it costs stamina. Run out and you slide.</li>
         <li><b>He falls asleep somewhere new every night:</b> his bed, a beach towel (the tide comes in), a camping cot (watch out for Bandit the raccoon) or the garden hammock (it sways).</li>
       </ul></div><div>
-      <table class="ctl">${r('jump', 'Jump')}${r('sprint', 'Sprint (loud!)')}${r('grab', 'Grab / drop loot or a goblin')}${r('swing', 'Hold to swing or throw; let go at the top of the meter')}${r('slap', 'Slap (knocks loot out of hands)')}${r('dive', 'Dive tackle')}${r('use', 'Use item')}${r('items', 'Pick item')}${r('interact', 'Hold in a rival stash to rob it')}${r('emote', 'Hold for emotes')}${r('ptt', 'Push to talk')}${r('scores', 'Scores')}</table>
+      <table class="ctl">${r('jump', 'Jump')}${r('sprint', 'Sprint (loud!)')}${r('grab', 'Grab / drop loot or a goblin')}${r('swing', 'Hold to swing or throw; let go at the top of the meter')}${r('slap', 'Slap (knocks loot out of hands)')}${r('dive', 'Dive tackle')}${r('use', 'Use item')}${r('items', 'Pick item')}${r('interact', 'Hold in a rival stash to rob it (you pull out something at random)')}${r('emote', 'Hold for emotes')}${r('ptt', 'Push to talk')}${r('scores', 'Scores')}</table>
       <p class="dim">Controller and keyboard both work. Prompts follow whichever you touched last.</p></div></div>
       <button class="back">Got it</button></div>`;
     $('.back', el).onclick = () => this.back();
